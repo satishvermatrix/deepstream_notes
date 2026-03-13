@@ -1,0 +1,293 @@
+DeepStream 8 CODER 
+
+That's a tough constraint. Let me think through this carefully.
+The Reality Check First
+The driver version check in DeepStream 8 / TensorRT 10 happens at two levels:
+1. Soft check — NVML/CUDA version string comparison (can be spoofed)
+2. Hard check — actual kernel module ioctls (cannot be faked)
+The hard checks mean certain DS 8 features that need kernel-level GPU ops will fail regardless. But if your use case doesn't hit those paths heavily, the approach below can work.
+
+The Actual Approach: Spoof the Driver Version via CDI + Hook Injection
+Step 1: Check your current nvidia-container-toolkit setup
+nvidia-ctk --version
+cat /etc/nvidia-container-runtime/config.toml
+ls /usr/share/containers/oci/hooks.d/
+ls /etc/containers/oci/hooks.d/
+Step 2: Disable the driver version check in container config
+sudo vim /etc/nvidia-container-runtime/config.toml
+Set:
+[nvidia-container-cli]
+no-cgroups = false
+
+# Add or modify:
+[nvidia-container-runtime]
+log-level = "info"
+
+# This is the key one:
+disable-require = true
+disable-require tells the runtime to ignore the CUDA_VERSION and driver require directives in the container image metadata.
+Step 3: Override NVIDIA_REQUIRE_* env vars at runtime
+DeepStream 8 image embeds driver requirements in its env. Override them:
+podman run --rm \
+  --device nvidia.com/gpu=all \
+  -e NVIDIA_REQUIRE_CUDA="cuda>=11.0" \
+  -e NVIDIA_DRIVER_CAPABILITIES=all \
+  -e NVIDIA_VISIBLE_DEVICES=all \
+  nvcr.io/nvidia/deepstream:8.0-triton-multiarch \
+  nvidia-smi
+Step 4: If using CDI (newer toolkit), generate a patched spec
+# Generate current CDI spec
+sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
+
+# Check what driver version is embedded
+grep -i "driver-version\|NVRM" /etc/cdi/nvidia.yaml
+Then patch the spec to relax version constraints:
+sudo nvidia-ctk cdi generate \
+  --driver-root=/ \
+  --output=/etc/cdi/nvidia.yaml
+Step 5: Write a custom OCI hook to inject spoofed driver version
+Create /etc/containers/oci/hooks.d/nvidia-driver-spoof.json:
+{
+  "version": "1.0.0",
+  "hook": {
+    "path": "/usr/local/bin/nvidia-driver-spoof.sh",
+    "args": ["nvidia-driver-spoof.sh"],
+    "env": []
+  },
+  "when": {
+    "hasBindMounts": true,
+    "annotations": {
+      "^run.oci.hooks.nvidia": ".*"
+    }
+  },
+  "stages": ["prestart"]
+}
+Create the hook script /usr/local/bin/nvidia-driver-spoof.sh:
+#!/bin/bash
+# Read the OCI state from stdin
+state=$(cat)
+bundle=$(echo "$state" | python3 -c "import sys,json; print(json.load(sys.stdin)['bundle'])")
+
+config="$bundle/config.json"
+
+# Inject env vars to spoof driver version
+python3 - <<EOF
+import json
+
+with open('$config', 'r') as f:
+    cfg = json.load(f)
+
+env = cfg['process']['env']
+
+# Remove any existing NVIDIA_REQUIRE entries
+env = [e for e in env if not e.startswith('NVIDIA_REQUIRE_')]
+
+# Add relaxed requirements
+env.append('NVIDIA_REQUIRE_CUDA=cuda>=11.0 driver>=520')
+env.append('NVIDIA_DRIVER_CAPABILITIES=all')
+
+cfg['process']['env'] = env
+
+with open('$config', 'w') as f:
+    json.dump(cfg, f)
+EOF
+sudo chmod +x /usr/local/bin/nvidia-driver-spoof.sh
+
+Step 6: Test progressively
+# Test 1: Does nvidia-smi work inside DS8?
+podman run --rm \
+  --device nvidia.com/gpu=all \
+  -e NVIDIA_REQUIRE_CUDA="cuda>=11.0 driver>=520" \
+  -e NVIDIA_DRIVER_CAPABILITIES=all \
+  nvcr.io/nvidia/deepstream:8.0-triton-multiarch \
+  nvidia-smi
+
+# Test 2: Does CUDA init work?
+podman run --rm \
+  --device nvidia.com/gpu=all \
+  -e NVIDIA_REQUIRE_CUDA="cuda>=11.0 driver>=520" \
+  nvcr.io/nvidia/deepstream:8.0-triton-multiarch \
+  python3 -c "import ctypes; ctypes.cdll.LoadLibrary('libcuda.so')"
+
+# Test 3: TensorRT
+podman run --rm \
+  --device nvidia.com/gpu=all \
+  -e NVIDIA_REQUIRE_CUDA="cuda>=11.0 driver>=520" \
+  nvcr.io/nvidia/deepstream:8.0-triton-multiarch \
+  trtexec --help
+
+What Will and Won't Work
+Feature	Likely works	Notes
+nvidia-smi	✅	Basic NVML calls
+CUDA inference	⚠️	Depends on ops used
+TensorRT engines	⚠️	May hit SM version issues
+NvDCF tracker	⚠️	Test specifically
+NVENC/NVDEC	❌ likely	Codec firmware tied to driver
+New DS8-only CUDA 12.x ops	❌	Hard kernel ABI mismatch
+Start with disable-require = true and the env var override — that alone may be enough to get past the startup checks and into your pipeline. What specific DS 8 features are you targeting?
+
+
+
+Let me give you a solid mental model for Podman hooks.Here's a solid mental model for Podman hooks — what they are, how they work, and where they live in the container lifecycle.
+What hooks are
+A hook is an external executable that Podman calls at specific points in a container's lifecycle. It receives the container's OCI runtime state via stdin as JSON, and can read or modify the container's config before it starts. For NVIDIA use, hooks are how nvidia-container-toolkit injects GPU device mounts into the container automatically.
+Let me diagram the full picture:## The key files and their roles
+Hook definition — a JSON file in one of these dirs (Podman checks both):
+/etc/containers/oci/hooks.d/       ← system-wide
+~/.config/containers/oci/hooks.d/  ← user-level (rootless)
+A hook JSON looks like this:
+{
+  "version": "1.0.0",
+  "hook": {
+    "path": "/usr/bin/nvidia-container-runtime-hook",
+    "args": ["nvidia-container-runtime-hook", "prestart"],
+    "env": []
+  },
+  "when": {
+    "always": false,
+    "annotations": {
+      "^run.oci.hooks.nvidia$": ".*"
+    },
+    "hasBindMounts": false
+  },
+  "stages": ["prestart"]
+}
+The when block is the trigger condition — the hook only fires if the container matches. Conditions are OR'd together:
+when field	Meaning
+"always": true	Fire for every container
+"annotations"	Regex match on container annotations
+"commands"	Regex match on the container's entrypoint
+"hasBindMounts": true	Only if container has bind mounts
+The hook binary itself receives the OCI state JSON on stdin:
+{
+  "ociVersion": "1.0.0",
+  "id": "abc123",
+  "status": "created",
+  "pid": 12345,
+  "bundle": "/run/containers/storage/overlay-containers/abc123/userdata"
+}
+The bundle path is the key — it points to the container's config.json where env vars, mounts, and capabilities live. Your hook script reads this path and modifies config.json before the container process starts.
+The NVIDIA-specific chain
+/etc/nvidia-container-runtime/config.toml    ← controls what the hook does
+/etc/cdi/nvidia.yaml                         ← CDI spec (device descriptions)
+/usr/share/containers/oci/hooks.d/oci-nvidia-hook.json  ← hook definition
+/usr/bin/nvidia-container-runtime-hook       ← the actual binary
+When you run podman run --device nvidia.com/gpu=all, Podman:
+1. Reads the hook JSON, sees stages: ["prestart"]
+2. At prestart stage, calls nvidia-container-runtime-hook prestart with the OCI state on stdin
+3. That binary reads config.toml, finds your disable-require flag, reads the CDI spec
+4. Injects /dev/nvidia0, /dev/nvidiactl, libcuda.so, libnvidia-ml.so as mounts into config.json
+5. Container process launches with GPU access already wired in
+Debugging hooks
+# See which hooks are registered
+ls -la /etc/containers/oci/hooks.d/
+ls -la /usr/share/containers/oci/hooks.d/
+
+# Validate a hook JSON
+podman run --rm --hooks-dir /etc/containers/oci/hooks.d/ \
+  --log-level=debug hello-world 2>&1 | grep -i hook
+
+# Watch what the hook binary gets on stdin (wrap it)
+cat > /tmp/hook-debug.sh << 'EOF'
+#!/bin/bash
+STATE=$(cat)
+echo "[HOOK] $(date) stage=$1 state=$STATE" >> /tmp/hook-debug.log
+echo "$STATE" | /usr/bin/nvidia-container-runtime-hook "$@"
+EOF
+chmod +x /tmp/hook-debug.sh
+
+# Check what config.toml is actually doing
+nvidia-container-cli info   # shows what the CLI layer sees
+nvidia-container-cli list   # lists what it would mount
+
+# Manually simulate what the hook does
+echo '{"ociVersion":"1.0.0","id":"test","status":"created","bundle":"/tmp/test-bundle"}' \
+  | /usr/bin/nvidia-container-runtime-hook prestart
+The disable-require flag — what it actually does
+In config.toml, disable-require = true tells the hook to skip validating the CUDA_VERSION and DRIVER_VERSION requirements baked into the container image's labels. Specifically it skips this check:
+io.nvidia.cuda.requires.cuda = "cuda>=12.0 driver>=570"
+Without disable-require, the hook reads those labels from the container image, compares against the host driver version (nvidia-smi → 535), and exits non-zero before injecting anything — so the container never gets GPU access at all. With disable-require = true, it skips that check and injects unconditionally.
+That's the layer you're working with — it's purely a version gate in userspace, not a kernel check. The actual question for your DS8 pipeline is which runtime calls then hit the kernel ABI and fail vs which ones happen entirely in CUDA userspace with your 535 driver.
+
+
+
+Good question — rootless Podman has its own hooks directory that you do own.
+User-level hooks directory
+# This is yours — no sudo needed
+mkdir -p ~/.config/containers/oci/hooks.d/
+
+# Verify Podman sees it
+podman info | grep -i hook
+Podman automatically checks both the system dir and your user dir, so hooks you place here fire just like system hooks.
+But there's a catch — rootless + NVIDIA
+If you're running rootless Podman, the NVIDIA hook binary itself (nvidia-container-runtime-hook) may need root to access /dev/nvidia*. Check:
+# Does the hook binary exist and is it executable by you?
+ls -la /usr/bin/nvidia-container-runtime-hook
+# or
+which nvidia-container-runtime-hook
+
+# Can you run nvidia-container-cli as your user?
+nvidia-container-cli info
+If nvidia-container-cli info works as your user, you're fine. If it errors, you have two paths:
+
+Path 1 — Use CDI instead of hooks (recommended for rootless)
+CDI (Container Device Interface) is Podman's newer mechanism that doesn't need hooks at all — devices are specified declaratively and Podman handles injection itself:
+# Check if CDI spec already exists
+ls /etc/cdi/
+ls ~/.config/cdi/     # user-level CDI specs live here
+
+# If system CDI spec exists, just use it directly
+podman run --device nvidia.com/gpu=all ...
+
+# If not, generate it to your user dir (no sudo)
+mkdir -p ~/.config/cdi
+nvidia-ctk cdi generate --output=~/.config/cdi/nvidia.yaml
+Then run with:
+podman run --device nvidia.com/gpu=all \
+  -e NVIDIA_REQUIRE_CUDA="cuda>=11.0 driver>=520" \
+  nvcr.io/nvidia/deepstream:8.0-triton-multiarch \
+  nvidia-smi
+
+Path 2 — Write hook to your user dir
+If CDI isn't available, drop the hook JSON in your user dir:
+mkdir -p ~/.config/containers/oci/hooks.d/
+
+cat > ~/.config/containers/oci/hooks.d/nvidia-ds8.json << 'EOF'
+{
+  "version": "1.0.0",
+  "hook": {
+    "path": "/usr/bin/nvidia-container-runtime-hook",
+    "args": ["nvidia-container-runtime-hook", "prestart"],
+    "env": []
+  },
+  "when": {
+    "always": true
+  },
+  "stages": ["prestart"]
+}
+EOF
+And control the behaviour via env vars at runtime instead of touching config.toml:
+podman run --device nvidia.com/gpu=all \
+  -e NVIDIA_DISABLE_REQUIRE=1 \
+  -e NVIDIA_REQUIRE_CUDA="cuda>=11.0 driver>=520" \
+  -e NVIDIA_DRIVER_CAPABILITIES=all \
+  -e NVIDIA_VISIBLE_DEVICES=all \
+  nvcr.io/nvidia/deepstream:8.0-triton-multiarch \
+  nvidia-smi
+NVIDIA_DISABLE_REQUIRE=1 is the env var equivalent of disable-require = true in config.toml — it tells the hook binary to skip driver version validation without needing to touch any system config file.
+
+Quick diagnostic to figure out your situation
+# 1. Are you rootless?
+podman info | grep rootless
+
+# 2. What hook dirs does Podman see?
+podman info 2>/dev/null | grep -A5 -i hook
+
+# 3. Is CDI available and does it have an nvidia spec?
+podman info 2>/dev/null | grep -i cdi
+ls /etc/cdi/ ~/.config/cdi/ 2>/dev/null
+
+# 4. Can you talk to the GPU at all right now?
+podman run --rm --device nvidia.com/gpu=all \
+  nvcr.io/nvidia/cuda:12.0-base-ubuntu22.04 nvidia-smi
+The output of step 3 and 4 will tell you exactly which path applies to your setup.
