@@ -291,3 +291,60 @@ ls /etc/cdi/ ~/.config/cdi/ 2>/dev/null
 podman run --rm --device nvidia.com/gpu=all \
   nvcr.io/nvidia/cuda:12.0-base-ubuntu22.04 nvidia-smi
 The output of step 3 and 4 will tell you exactly which path applies to your setup.
+
+
+
+Yes, exactly. Let me be blunt about what's actually happening here.
+
+## The honest picture
+
+There are **two fundamentally different things** that get called "driver checks":
+
+```
+┌─────────────────────────────────────────────────────┐
+│  Layer 1: Userspace version gate  ← we can bypass   │
+│  nvidia-container-runtime-hook reads image labels    │
+│  "requires driver>=570" → compares → rejects         │
+│                                                      │
+│  Layer 2: Kernel ABI calls  ← we cannot fake         │
+│  libcuda.so → ioctl() → /dev/nvidia0 → kernel module │
+│  kernel module IS version 535, period                │
+└─────────────────────────────────────────────────────┘
+```
+
+Bypassing `disable-require` / `NVIDIA_DISABLE_REQUIRE=1` only removes **Layer 1** — the userspace bouncer that reads the label and refuses entry. It does nothing about Layer 2.
+
+## So what actually breaks at runtime
+
+Once inside the container, DS8 components start making real CUDA/driver calls:
+
+| Component | What it calls | Will it work on 535? |
+|---|---|---|
+| `nvidia-smi` | NVML userspace only | ✅ probably yes |
+| CUDA runtime init | `cuInit()` → ioctl | ⚠️ depends on CUDA version gap |
+| TensorRT 10.x | New SM opcodes, new APIs | ❌ likely fails |
+| NvDCF tracker | CUDA kernels | ⚠️ test needed |
+| NVENC/NVDEC | Firmware in driver | ❌ almost certainly fails |
+| DeepStream pipeline startup | All of the above | ⚠️ unknown until tested |
+
+## The real question you need to answer
+
+Before spending more time on hooks and spoofing — run this first:
+
+```bash
+# Get inside DS8 with the gate bypassed
+podman run --rm \
+  --device nvidia.com/gpu=all \
+  -e NVIDIA_DISABLE_REQUIRE=1 \
+  -e NVIDIA_DRIVER_CAPABILITIES=all \
+  nvcr.io/nvidia/deepstream:8.0-triton-multiarch \
+  bash -c "
+    echo '=== nvidia-smi ===' && nvidia-smi &&
+    echo '=== CUDA init ===' && python3 -c 'import ctypes; r=ctypes.cdll.LoadLibrary(\"libcuda.so\").cuInit(0); print(\"cuInit:\", r)' &&
+    echo '=== TRT ===' && trtexec --help | head -3
+  "
+```
+
+The output will tell you exactly where the hard wall is. If `cuInit` returns `0` (success) or `35` (driver/library mismatch but loaded), you have signal. If it segfaults or returns `999`, the kernel ABI gap is fatal.
+
+**The hooks approach is only buying you entry past the bouncer. Whether the party inside works depends entirely on how much DS8 actually relies on driver 570-specific kernel interfaces** — and that's something only testing on your specific pipeline will reveal. What does your DS8 pipeline actually use — TensorRT inference, NVENC encoding, or mainly the GStreamer/tracking side?
