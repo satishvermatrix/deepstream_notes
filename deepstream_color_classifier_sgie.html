@@ -1,0 +1,1260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DeepStream · SGIE Color Classifier & Stabilization</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,300;0,400;0,600;1,300&family=IBM+Plex+Sans:wght@300;400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:         #f5f2ec;
+    --bg2:        #edeae2;
+    --surface:    #ffffff;
+    --border:     #d4cfc4;
+    --border2:    #bfb9ac;
+    --ink:        #1a1814;
+    --ink-mid:    #4a4640;
+    --ink-dim:    #8a857c;
+    --red:        #c0392b;
+    --orange:     #d4580a;
+    --blue:       #1a5276;
+    --green:      #1e6b3c;
+    --purple:     #6c3483;
+    --yellow-hl:  #fff3cd;
+    --yellow-brd: #d4a017;
+    --rule:       #ccc8be;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 14.5px;
+    line-height: 1.75;
+    min-height: 100vh;
+  }
+
+  /* ── GRAIN TEXTURE ── */
+  body::after {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 900;
+    opacity: 0.6;
+  }
+
+  /* ── LAYOUT ── */
+  .wrap {
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    min-height: 100vh;
+  }
+
+  /* ── SIDEBAR ── */
+  aside {
+    background: var(--ink);
+    color: #c8c4bc;
+    padding: 40px 24px;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+    border-right: 1px solid #2a2822;
+  }
+
+  .aside-logo {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    color: var(--orange);
+    margin-bottom: 6px;
+  }
+
+  .aside-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #f0ece4;
+    line-height: 1.4;
+    margin-bottom: 32px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid #2a2822;
+  }
+
+  .nav-group {
+    margin-bottom: 24px;
+  }
+
+  .nav-group-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: #4a4640;
+    margin-bottom: 8px;
+  }
+
+  .nav-group a {
+    display: block;
+    font-size: 12.5px;
+    color: #8a857c;
+    text-decoration: none;
+    padding: 4px 0 4px 12px;
+    border-left: 2px solid transparent;
+    transition: color 0.15s, border-color 0.15s;
+    line-height: 1.5;
+  }
+
+  .nav-group a:hover {
+    color: #f0ece4;
+    border-left-color: var(--orange);
+  }
+
+  .aside-stack {
+    margin-top: 40px;
+    padding-top: 20px;
+    border-top: 1px solid #2a2822;
+  }
+
+  .stack-item {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    color: #3a3630;
+    margin-bottom: 4px;
+    letter-spacing: 0.05em;
+  }
+
+  .stack-item span {
+    color: #5a5650;
+  }
+
+  /* ── MAIN CONTENT ── */
+  main {
+    padding: 56px 64px 80px;
+    max-width: 900px;
+  }
+
+  /* ── HEADER ── */
+  .page-header {
+    margin-bottom: 52px;
+    padding-bottom: 36px;
+    border-bottom: 2px solid var(--ink);
+  }
+
+  .eyebrow {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: var(--orange);
+    margin-bottom: 12px;
+  }
+
+  h1 {
+    font-size: clamp(1.8rem, 4vw, 2.8rem);
+    font-weight: 700;
+    color: var(--ink);
+    line-height: 1.1;
+    letter-spacing: -0.03em;
+    margin-bottom: 14px;
+  }
+
+  .header-desc {
+    font-size: 14px;
+    color: var(--ink-mid);
+    max-width: 600px;
+    line-height: 1.7;
+  }
+
+  .header-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 20px;
+  }
+
+  .tag {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    padding: 3px 10px;
+    border: 1px solid var(--border2);
+    border-radius: 2px;
+    color: var(--ink-mid);
+    background: var(--bg2);
+    text-transform: uppercase;
+  }
+
+  /* ── SECTIONS ── */
+  .section {
+    margin-bottom: 60px;
+    animation: fadeIn 0.4s ease both;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .section:nth-child(2) { animation-delay: 0.04s; }
+  .section:nth-child(3) { animation-delay: 0.08s; }
+  .section:nth-child(4) { animation-delay: 0.12s; }
+  .section:nth-child(5) { animation-delay: 0.16s; }
+  .section:nth-child(6) { animation-delay: 0.20s; }
+  .section:nth-child(7) { animation-delay: 0.24s; }
+  .section:nth-child(8) { animation-delay: 0.28s; }
+
+  .section-marker {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 20px;
+  }
+
+  .section-num {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--orange);
+    background: #fde9d8;
+    border: 1px solid #f5c4a0;
+    border-radius: 2px;
+    padding: 2px 8px;
+    flex-shrink: 0;
+  }
+
+  h2 {
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: var(--ink);
+    letter-spacing: -0.02em;
+  }
+
+  h3 {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--ink);
+    margin: 28px 0 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  p {
+    margin-bottom: 14px;
+    color: var(--ink-mid);
+    font-size: 14px;
+  }
+
+  /* ── PIPELINE ── */
+  .pipeline {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0;
+    background: var(--ink);
+    border-radius: 6px;
+    padding: 18px 22px;
+    margin: 18px 0 24px;
+    overflow-x: auto;
+  }
+
+  .p-node {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+  }
+
+  .p-box {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: #8a857c;
+    padding: 5px 10px;
+    border: 1px solid #2a2822;
+    border-radius: 3px;
+    background: #111008;
+    white-space: nowrap;
+    transition: all 0.15s;
+  }
+
+  .p-box:hover { color: #f0ece4; border-color: #4a4640; }
+
+  .p-box.hl-orange {
+    color: var(--orange);
+    border-color: #5a2808;
+    background: #1a0800;
+  }
+
+  .p-box.hl-blue {
+    color: #5ba0d4;
+    border-color: #1a3a5a;
+    background: #08101a;
+  }
+
+  .p-arrow {
+    font-family: 'IBM Plex Mono', monospace;
+    color: #2a2822;
+    padding: 0 6px;
+    font-size: 12px;
+  }
+
+  /* ── CODE ── */
+  .code-block {
+    position: relative;
+    margin: 14px 0 22px;
+  }
+
+  .code-file {
+    display: inline-block;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-bottom: none;
+    padding: 4px 12px;
+    border-radius: 3px 3px 0 0;
+  }
+
+  pre {
+    background: #1c1a14;
+    color: #c8c4bc;
+    border-radius: 0 4px 4px 4px;
+    padding: 22px 24px;
+    overflow-x: auto;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12.5px;
+    line-height: 1.75;
+    tab-size: 4;
+    border: 1px solid #2a2822;
+  }
+
+  .code-block .code-file + pre {
+    border-radius: 0 4px 4px 4px;
+  }
+
+  /* ini tokens */
+  .ini-section { color: #d4580a; font-weight: 600; }
+  .ini-key     { color: #7abfdf; }
+  .ini-val     { color: #a8d88a; }
+  .ini-cm      { color: #3a3830; font-style: italic; }
+
+  /* python tokens */
+  .kw   { color: #d4580a; font-style: italic; }
+  .fn   { color: #e8c56a; }
+  .st   { color: #8fd4a0; }
+  .cm   { color: #3a3830; font-style: italic; }
+  .nb   { color: #7abfdf; }
+  .num  { color: #d4a878; }
+  .op   { color: #8a857c; }
+  .dec  { color: #c87dd4; }
+
+  /* ── CALLOUTS ── */
+  .callout {
+    padding: 14px 18px;
+    border-radius: 3px;
+    margin: 18px 0;
+    font-size: 13.5px;
+    border: 1px solid;
+    position: relative;
+    padding-left: 44px;
+  }
+
+  .callout::before {
+    position: absolute;
+    left: 14px;
+    top: 14px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .callout.note   { background: #e8f4fd; border-color: #aed6f1; color: #1a4a6a; }
+  .callout.note::before   { content: 'ℹ'; color: var(--blue); }
+
+  .callout.warn   { background: var(--yellow-hl); border-color: var(--yellow-brd); color: #5a4000; }
+  .callout.warn::before   { content: '⚠'; color: var(--orange); }
+
+  .callout.tip    { background: #eafaf1; border-color: #a9dfbf; color: #1a4a2a; }
+  .callout.tip::before    { content: '✦'; color: var(--green); }
+
+  .callout-title {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    font-weight: 600;
+    margin-bottom: 4px;
+    display: block;
+  }
+
+  /* ── TABLES ── */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    margin: 14px 0 22px;
+  }
+
+  th {
+    background: var(--ink);
+    color: #8a857c;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    font-weight: 400;
+    padding: 10px 14px;
+    text-align: left;
+    border: 1px solid #2a2822;
+  }
+
+  td {
+    padding: 10px 14px;
+    border: 1px solid var(--border);
+    color: var(--ink-mid);
+    vertical-align: top;
+    font-size: 13px;
+  }
+
+  td:first-child {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11.5px;
+    color: var(--ink);
+    white-space: nowrap;
+    background: var(--bg2);
+  }
+
+  tr:hover td { background: #f0ece4; }
+  tr:hover td:first-child { background: #e8e4da; }
+
+  /* ── STRATEGY CARDS ── */
+  .strategy-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+    margin: 18px 0 24px;
+  }
+
+  .s-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 18px;
+    border-top: 3px solid;
+    transition: transform 0.15s, box-shadow 0.15s;
+  }
+
+  .s-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+  }
+
+  .s-card:nth-child(1) { border-top-color: var(--orange); }
+  .s-card:nth-child(2) { border-top-color: var(--blue); }
+  .s-card:nth-child(3) { border-top-color: var(--green); }
+
+  .s-card-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+    margin-bottom: 6px;
+  }
+
+  .s-card h4 {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--ink);
+    margin-bottom: 8px;
+  }
+
+  .s-card p {
+    font-size: 12.5px;
+    color: var(--ink-dim);
+    margin: 0;
+    line-height: 1.55;
+  }
+
+  /* ── COLOR SWATCH PALETTE ── */
+  .color-palette {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 16px 0;
+  }
+
+  .swatch {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 6px 12px 6px 8px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--ink-mid);
+  }
+
+  .swatch-dot {
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    border: 1px solid rgba(0,0,0,0.15);
+    flex-shrink: 0;
+  }
+
+  /* ── FLOW DIAGRAM ── */
+  .flow {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 24px 28px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    line-height: 2.1;
+    color: var(--ink-mid);
+    margin: 16px 0;
+  }
+
+  .flow .f-head { color: var(--orange); font-weight: 600; }
+  .flow .f-key  { color: var(--blue); }
+  .flow .f-val  { color: var(--green); }
+  .flow .f-cm   { color: var(--ink-dim); font-style: italic; }
+  .flow .f-arrow{ color: var(--ink-dim); }
+
+  /* ── STABILITY METER ── */
+  .stability-table td.meter-cell {
+    padding: 8px 14px;
+  }
+
+  .meter-bar {
+    height: 6px;
+    border-radius: 3px;
+    background: var(--bg2);
+    margin-top: 4px;
+    overflow: hidden;
+  }
+
+  .meter-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.8s ease;
+  }
+
+  .meter-fill.high   { background: var(--green); }
+  .meter-fill.mid    { background: var(--orange); }
+  .meter-fill.low    { background: var(--red); }
+
+  code {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11.5px;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    padding: 1px 6px;
+    color: var(--red);
+  }
+
+  ul {
+    padding-left: 18px;
+    color: var(--ink-mid);
+    font-size: 13.5px;
+    margin-bottom: 14px;
+  }
+
+  ul li { margin-bottom: 6px; }
+  ul li::marker { color: var(--orange); }
+
+  hr {
+    border: none;
+    border-top: 1px solid var(--rule);
+    margin: 48px 0;
+  }
+
+  /* ── FOOTER ── */
+  footer {
+    border-top: 2px solid var(--ink);
+    padding-top: 24px;
+    margin-top: 60px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+
+  .footer-left {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--ink-dim);
+    line-height: 1.8;
+  }
+
+  .footer-right {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    align-items: flex-end;
+  }
+
+  .footer-badge {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    color: var(--ink-dim);
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    padding: 2px 8px;
+    border-radius: 2px;
+  }
+
+  @media (max-width: 860px) {
+    .wrap { grid-template-columns: 1fr; }
+    aside { position: static; height: auto; }
+    main  { padding: 32px 24px 60px; }
+    .strategy-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ── SIDEBAR ── -->
+  <aside>
+    <div class="aside-logo">DeepStream 8</div>
+    <div class="aside-title">SGIE Color Classifier &amp; Track Stabilization</div>
+
+    <div class="nav-group">
+      <div class="nav-group-label">Setup</div>
+      <a href="#pipeline">Pipeline Position</a>
+      <a href="#config">SGIE Config</a>
+      <a href="#labels">Label File</a>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-group-label">Runtime</div>
+      <a href="#reading">Reading Output</a>
+      <a href="#problem">Stabilization Problem</a>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-group-label">Strategies</div>
+      <a href="#strategy-a">A · Weighted Vote</a>
+      <a href="#strategy-b">B · EMA on Logits</a>
+      <a href="#strategy-c">C · Quality Gate</a>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-group-label">Integration</div>
+      <a href="#probe">Probe Integration</a>
+      <a href="#ambiguous">Ambiguous Cases</a>
+      <a href="#summary">Summary</a>
+    </div>
+
+    <div class="aside-stack">
+      <div class="stack-item">process-mode <span>= 2 (SGIE)</span></div>
+      <div class="stack-item">network-type <span>= 1 (classifier)</span></div>
+      <div class="stack-item">NvDsClassifierMeta</div>
+      <div class="stack-item">NvDsLabelInfo</div>
+      <div class="stack-item">NvDCF + pastFrame</div>
+    </div>
+  </aside>
+
+  <!-- ── MAIN ── -->
+  <main>
+
+    <header class="page-header">
+      <div class="eyebrow">Vehicle Intelligence Pipeline</div>
+      <h1>SGIE Color Classifier<br>+ Track Stabilization</h1>
+      <p class="header-desc">
+        Wiring a finetuned color classifier as a Secondary GIE and aggregating
+        per-frame predictions into one stable color label per tracked object.
+      </p>
+      <div class="header-tags">
+        <span class="tag">nvinfer SGIE</span>
+        <span class="tag">NvDsClassifierMeta</span>
+        <span class="tag">Majority Vote</span>
+        <span class="tag">EMA</span>
+        <span class="tag">Quality Gate</span>
+        <span class="tag">NvDCF</span>
+      </div>
+    </header>
+
+    <!-- ── 01 PIPELINE ── -->
+    <div class="section" id="pipeline">
+      <div class="section-marker">
+        <span class="section-num">01</span>
+        <h2>Pipeline Position</h2>
+      </div>
+      <p>
+        The color classifier runs as a Secondary GIE — <strong>after</strong> the tracker so it
+        receives one inference call per tracked object crop per frame, not per raw detection.
+        The SGIE's <code>operate-on-gie-id</code> must match the PGIE's <code>gie-unique-id</code>.
+      </p>
+
+      <div class="pipeline">
+        <div class="p-node"><div class="p-box">nvstreammux</div><div class="p-arrow">→</div></div>
+        <div class="p-node"><div class="p-box hl-orange">nvinfer PGIE</div><div class="p-arrow">→</div></div>
+        <div class="p-node"><div class="p-box">nvtracker</div><div class="p-arrow">→</div></div>
+        <div class="p-node"><div class="p-box hl-blue">nvinfer SGIE<br><span style="font-size:9px;opacity:.6">color classifier</span></div><div class="p-arrow">→</div></div>
+        <div class="p-node"><div class="p-box">nvdsosd</div><div class="p-arrow">→</div></div>
+        <div class="p-node"><div class="p-box">output</div></div>
+      </div>
+
+      <div class="callout note">
+        <span class="callout-title">Why After Tracker?</span>
+        The tracker assigns stable <code>object_id</code> values. If the SGIE ran before the tracker
+        each detection would be a new anonymous object — you could not accumulate per-track color history.
+      </div>
+    </div>
+
+    <!-- ── 02 CONFIG ── -->
+    <div class="section" id="config">
+      <div class="section-marker">
+        <span class="section-num">02</span>
+        <h2>SGIE Config File</h2>
+      </div>
+      <p>Key properties that distinguish an SGIE classifier from a PGIE detector:</p>
+
+      <div class="code-block">
+        <div class="code-file">config_sgie_color.txt</div>
+        <pre><span class="ini-section">[property]</span>
+<span class="ini-key">gpu-id</span>                  <span class="op">=</span> <span class="ini-val">0</span>
+<span class="ini-key">net-scale-factor</span>        <span class="op">=</span> <span class="ini-val">0.0039215697906911373</span>   <span class="ini-cm"># 1/255</span>
+<span class="ini-key">model-engine-file</span>       <span class="op">=</span> <span class="ini-val">color_classifier.engine</span>
+<span class="ini-key">labelfile-path</span>          <span class="op">=</span> <span class="ini-val">color_labels.txt</span>
+<span class="ini-key">batch-size</span>              <span class="op">=</span> <span class="ini-val">16</span>
+
+<span class="ini-cm"># ── SGIE-specific ──────────────────────────────────────</span>
+<span class="ini-key">network-type</span>            <span class="op">=</span> <span class="ini-val">1</span>     <span class="ini-cm"># 1 = classifier (not detector)</span>
+<span class="ini-key">process-mode</span>            <span class="op">=</span> <span class="ini-val">2</span>     <span class="ini-cm"># 2 = secondary GIE</span>
+<span class="ini-key">operate-on-gie-id</span>       <span class="op">=</span> <span class="ini-val">1</span>     <span class="ini-cm"># must match PGIE gie-unique-id</span>
+<span class="ini-key">operate-on-class-ids</span>    <span class="op">=</span> <span class="ini-val">0</span>     <span class="ini-cm"># 0 = vehicle class only</span>
+<span class="ini-key">gie-unique-id</span>           <span class="op">=</span> <span class="ini-val">2</span>     <span class="ini-cm"># referenced in probe</span>
+
+<span class="ini-cm"># ── Quality gate at inference level ────────────────────</span>
+<span class="ini-key">input-object-min-width</span>  <span class="op">=</span> <span class="ini-val">64</span>    <span class="ini-cm"># skip tiny / distant vehicles</span>
+<span class="ini-key">input-object-min-height</span> <span class="op">=</span> <span class="ini-val">64</span>
+
+<span class="ini-key">classifier-async-mode</span>   <span class="op">=</span> <span class="ini-val">0</span>     <span class="ini-cm"># sync: results in same frame</span>
+
+<span class="ini-cm"># ── Optional: bbox shrink before crop ──────────────────</span>
+<span class="ini-cm"># Crops slightly inside the bbox → less background contamination</span>
+<span class="ini-key">classifier-threshold</span>    <span class="op">=</span> <span class="ini-val">0.2</span></pre>
+      </div>
+
+      <table>
+        <thead><tr><th>Property</th><th>Value</th><th>Why it matters</th></tr></thead>
+        <tbody>
+          <tr><td>network-type</td><td>1</td><td>Tells nvinfer to run softmax + argmax, not NMS decode</td></tr>
+          <tr><td>process-mode</td><td>2</td><td>Crops each object bbox and runs inference on that crop</td></tr>
+          <tr><td>operate-on-gie-id</td><td>1</td><td>Only runs on objects detected by gie-id=1 (your PGIE)</td></tr>
+          <tr><td>operate-on-class-ids</td><td>0</td><td>Only runs on class 0 (vehicle) — skips pedestrians, etc.</td></tr>
+          <tr><td>gie-unique-id</td><td>2</td><td>ID used to find this SGIE's output in classifier_meta_list</td></tr>
+          <tr><td>classifier-async-mode</td><td>0</td><td>Sync mode: results attached to same frame's metadata</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ── 03 LABELS ── -->
+    <div class="section" id="labels">
+      <div class="section-marker">
+        <span class="section-num">03</span>
+        <h2>Label File &amp; Color Classes</h2>
+      </div>
+      <p>
+        One label per line. Line index must match output logit index from your model.
+        Keep the label set coarse enough to be stable — fine-grained distinctions
+        (pearl vs cream) are noise sources at inference time.
+      </p>
+
+      <div class="code-block">
+        <div class="code-file">color_labels.txt</div>
+        <pre>black
+white
+silver
+gray
+red
+blue
+green
+yellow
+orange
+brown</pre>
+      </div>
+
+      <div class="color-palette">
+        <div class="swatch"><div class="swatch-dot" style="background:#1a1a1a"></div>black</div>
+        <div class="swatch"><div class="swatch-dot" style="background:#f5f5f5"></div>white</div>
+        <div class="swatch"><div class="swatch-dot" style="background:#c0c0c0"></div>silver</div>
+        <div class="swatch"><div class="swatch-dot" style="background:#808080"></div>gray</div>
+        <div class="swatch"><div class="swatch-dot" style="background:#c0392b"></div>red</div>
+        <div class="swatch"><div class="swatch-dot" style="background:#2471a3"></div>blue</div>
+        <div class="swatch"><div class="swatch-dot" style="background:#1e8449"></div>green</div>
+        <div class="swatch"><div class="swatch-dot" style="background:#f1c40f"></div>yellow</div>
+        <div class="swatch"><div class="swatch-dot" style="background:#d4580a"></div>orange</div>
+        <div class="swatch"><div class="swatch-dot" style="background:#7d4e24"></div>brown</div>
+      </div>
+
+      <div class="callout warn">
+        <span class="callout-title">Silver vs Gray</span>
+        Silver and gray are specular neighbors — highly sensitive to lighting angle and camera exposure.
+        Consider merging them into a single <code>achromatic</code> class if your application does not
+        require the distinction. It significantly improves per-class accuracy.
+      </div>
+    </div>
+
+    <!-- ── 04 READING ── -->
+    <div class="section" id="reading">
+      <div class="section-marker">
+        <span class="section-num">04</span>
+        <h2>Reading SGIE Output in the Probe</h2>
+      </div>
+      <p>
+        SGIE classifier results land in <code>NvDsClassifierMeta</code> attached to each
+        <code>NvDsObjectMeta</code>. The <code>unique_component_id</code> field identifies which
+        SGIE produced the result — match it against your <code>gie-unique-id=2</code>.
+      </p>
+
+      <div class="code-block">
+        <div class="code-file">Python · metadata traversal</div>
+        <pre><span class="kw">def</span> <span class="fn">get_color_prediction</span>(obj_meta):
+    <span class="st">"""
+    Returns (label, confidence) from the color SGIE.
+    Returns (None, 0.0) if SGIE result not yet available
+    (e.g. object too small, async mode lag).
+    """</span>
+    l_cls = obj_meta.classifier_meta_list
+    <span class="kw">while</span> l_cls:
+        cls_meta = pyds.NvDsClassifierMeta.cast(l_cls.data)
+
+        <span class="cm"># Filter to our color SGIE by unique_component_id</span>
+        <span class="kw">if</span> cls_meta.unique_component_id == <span class="num">2</span>:
+            l_label = cls_meta.label_info_list
+            <span class="kw">while</span> l_label:
+                label_info = pyds.NvDsLabelInfo.cast(l_label.data)
+                <span class="cm"># result_label: string (e.g. "silver")</span>
+                <span class="cm"># result_prob:  float  (softmax probability)</span>
+                <span class="kw">return</span> label_info.result_label, label_info.result_prob
+                l_label = l_label.next
+
+        l_cls = l_cls.next
+    <span class="kw">return</span> <span class="nb">None</span>, <span class="num">0.0</span></pre>
+      </div>
+
+      <div class="callout note">
+        <span class="callout-title">Async Mode</span>
+        With <code>classifier-async-mode=0</code> results are attached to the same frame's metadata.
+        With async mode enabled, results arrive on a subsequent frame — you need to handle the
+        lag in your accumulator. Sync mode is simpler and recommended unless latency is critical.
+      </div>
+    </div>
+
+    <!-- ── 05 PROBLEM ── -->
+    <div class="section" id="problem">
+      <div class="section-marker">
+        <span class="section-num">05</span>
+        <h2>The Stabilization Problem</h2>
+      </div>
+      <p>
+        Your classifier fires once per frame. Raw per-frame predictions are noisy because
+        the same physical vehicle produces different image patches depending on viewpoint,
+        lighting, and occlusion. You need to aggregate N predictions into one stable label.
+      </p>
+
+      <table>
+        <thead><tr><th>Noise Source</th><th>Effect on Prediction</th></tr></thead>
+        <tbody>
+          <tr><td>Lighting variation</td><td>Silver → white in direct sun; gray → black in shadow</td></tr>
+          <tr><td>Viewpoint change</td><td>Front vs rear reflectance differs; specular highlights shift</td></tr>
+          <tr><td>Partial occlusion</td><td>Another vehicle overlaps bbox; wrong color dominates crop</td></tr>
+          <tr><td>Low bbox resolution</td><td>Distant vehicles → <64px → skipped by SGIE or low confidence</td></tr>
+          <tr><td>Motion blur</td><td>Color information smeared across pixels; softmax flattens</td></tr>
+        </tbody>
+      </table>
+
+      <div class="strategy-grid">
+        <div class="s-card">
+          <div class="s-card-label">Strategy A</div>
+          <h4>Confidence-Weighted Vote</h4>
+          <p>Accumulate (label, conf) pairs. At flush, sum confidence per label. Winner is stable color. Robust and simple.</p>
+        </div>
+        <div class="s-card">
+          <div class="s-card-label">Strategy B</div>
+          <h4>EMA on Logits</h4>
+          <p>Exponential moving average on raw probability vector. Requires tensor extraction. Best for gradual convergence as vehicle approaches.</p>
+        </div>
+        <div class="s-card">
+          <div class="s-card-label">Strategy C</div>
+          <h4>Quality-Gated Vote</h4>
+          <p>Weight each vote by both SGIE confidence and frame quality score. Most accurate. Combines signals from the best-frame pipeline.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── 06 STRATEGY A ── -->
+    <div class="section" id="strategy-a">
+      <div class="section-marker">
+        <span class="section-num">06</span>
+        <h2>Strategy A — Confidence-Weighted Majority Vote</h2>
+      </div>
+      <p>
+        The recommended default. No tensor extraction required — works entirely on
+        <code>result_label</code> and <code>result_prob</code> from <code>NvDsLabelInfo</code>.
+      </p>
+
+      <div class="code-block">
+        <div class="code-file">Python</div>
+        <pre><span class="kw">from</span> collections <span class="kw">import</span> defaultdict
+
+<span class="kw">def</span> <span class="fn">compute_stable_color</span>(color_history):
+    <span class="st">"""
+    color_history: list of (label: str, conf: float) tuples
+
+    Returns: (stable_label: str, stability: float)
+      stability ∈ [0, 1] — fraction of total weight on winner
+    """</span>
+    <span class="kw">if not</span> color_history:
+        <span class="kw">return</span> <span class="nb">None</span>, <span class="num">0.0</span>
+
+    <span class="cm"># Low-confidence frames add noise — filter first</span>
+    filtered = [(lbl, conf) <span class="kw">for</span> lbl, conf <span class="kw">in</span> color_history
+                <span class="kw">if</span> conf > <span class="num">0.40</span>]
+
+    <span class="cm"># Fallback: use all frames if too few pass the gate</span>
+    <span class="kw">if</span> <span class="nb">len</span>(filtered) < <span class="num">3</span>:
+        filtered = color_history
+
+    <span class="cm"># Accumulate confidence weight per class label</span>
+    weight_map = defaultdict(<span class="nb">float</span>)
+    <span class="kw">for</span> label, conf <span class="kw">in</span> filtered:
+        weight_map[label] += conf
+
+    <span class="cm"># Winner = highest cumulative weight</span>
+    stable_label  = <span class="nb">max</span>(weight_map, key=weight_map.get)
+    total_weight  = <span class="nb">sum</span>(weight_map.values())
+    winner_weight = weight_map[stable_label]
+
+    <span class="cm"># Stability: 1.0 = all votes on one label, 0.1 = spread evenly</span>
+    stability = winner_weight / total_weight <span class="kw">if</span> total_weight > <span class="num">0</span> <span class="kw">else</span> <span class="num">0.0</span>
+
+    <span class="kw">return</span> stable_label, stability</pre>
+      </div>
+    </div>
+
+    <!-- ── 07 STRATEGY B ── -->
+    <div class="section" id="strategy-b">
+      <div class="section-marker">
+        <span class="section-num">07</span>
+        <h2>Strategy B — EMA on Softmax Logits</h2>
+      </div>
+      <p>
+        Requires raw probability vectors (full softmax output, not just top-1).
+        Extract via <code>NvDsInferTensorMeta</code> or a custom output layer probe.
+        Better than discrete voting when the vehicle approaches gradually — the EMA
+        naturally increases confidence as more frames arrive.
+      </p>
+
+      <div class="code-block">
+        <div class="code-file">Python</div>
+        <pre><span class="kw">import</span> numpy <span class="kw">as</span> np
+
+<span class="dec">@dataclass</span>
+<span class="kw">class</span> <span class="fn">ColorEMA</span>:
+    n_classes: <span class="nb">int</span>   = <span class="num">10</span>
+    alpha:     <span class="nb">float</span> = <span class="num">0.3</span>   <span class="cm"># higher = more weight on recent frames</span>
+    ema:       np.ndarray = <span class="nb">None</span>
+    n_frames:  <span class="nb">int</span>   = <span class="num">0</span>
+
+    <span class="kw">def</span> <span class="fn">update</span>(self, probs: np.ndarray):
+        <span class="st">"""probs: shape (n_classes,), softmax output"""</span>
+        <span class="kw">if</span> self.ema <span class="kw">is</span> <span class="nb">None</span>:
+            self.ema = probs.copy()
+        <span class="kw">else</span>:
+            self.ema = self.alpha * probs + (<span class="num">1</span> - self.alpha) * self.ema
+        self.n_frames += <span class="num">1</span>
+
+    <span class="kw">def</span> <span class="fn">predict</span>(self, min_frames: <span class="nb">int</span> = <span class="num">5</span>):
+        <span class="st">"""
+        Returns (class_idx, confidence) or (None, 0.0)
+        if insufficient observations.
+        """</span>
+        <span class="kw">if</span> self.n_frames < min_frames <span class="kw">or</span> self.ema <span class="kw">is</span> <span class="nb">None</span>:
+            <span class="kw">return</span> <span class="nb">None</span>, <span class="num">0.0</span>
+        idx  = <span class="nb">int</span>(np.argmax(self.ema))
+        conf = <span class="nb">float</span>(self.ema[idx])
+        <span class="kw">return</span> idx, conf
+
+<span class="cm"># Per-track EMA state</span>
+color_ema_state = {}   <span class="cm"># (src_id, oid) → ColorEMA</span>
+
+<span class="kw">def</span> <span class="fn">update_ema</span>(key, probs):
+    <span class="kw">if</span> key <span class="kw">not in</span> color_ema_state:
+        color_ema_state[key] = ColorEMA()
+    color_ema_state[key].update(probs)</pre>
+      </div>
+
+      <div class="callout tip">
+        <span class="callout-title">Alpha Tuning</span>
+        <code>alpha=0.3</code> is a good default. Lower alpha (0.1–0.15) gives a longer memory —
+        good for consistent lighting. Higher alpha (0.5+) reacts faster to sudden changes —
+        useful if a vehicle enters a tunnel mid-track.
+      </div>
+    </div>
+
+    <!-- ── 08 STRATEGY C ── -->
+    <div class="section" id="strategy-c">
+      <div class="section-marker">
+        <span class="section-num">08</span>
+        <h2>Strategy C — Quality-Gated Vote</h2>
+      </div>
+      <p>
+        The most accurate strategy. Each vote is weighted by both the SGIE's softmax confidence
+        <em>and</em> the frame quality score from your best-frame-selection scorer.
+        Frames with poor geometry, edge truncation, or low tracker confidence contribute
+        proportionally less.
+      </p>
+
+      <div class="code-block">
+        <div class="code-file">Python</div>
+        <pre>CONF_GATE  = <span class="num">0.50</span>   <span class="cm"># min SGIE confidence to participate in vote</span>
+MIN_VOTES  = <span class="num">5</span>     <span class="cm"># require at least N quality frames</span>
+
+<span class="kw">def</span> <span class="fn">quality_gated_color</span>(color_history, quality_scores):
+    <span class="st">"""
+    color_history:  [(label, sgie_conf), ...]
+    quality_scores: [float, ...]  — from frame_quality_score()
+                    must be same length as color_history
+    """</span>
+    pairs = [
+        (lbl, sgie_conf, q_score)
+        <span class="kw">for</span> (lbl, sgie_conf), q_score
+        <span class="kw">in</span> <span class="nb">zip</span>(color_history, quality_scores)
+        <span class="kw">if</span> sgie_conf > CONF_GATE
+    ]
+
+    <span class="cm"># Fall back to unfiltered if not enough quality frames</span>
+    <span class="kw">if</span> <span class="nb">len</span>(pairs) < MIN_VOTES:
+        pairs = [
+            (lbl, c, <span class="num">1.0</span>)
+            <span class="kw">for</span> lbl, c <span class="kw">in</span> color_history
+        ]
+
+    weight_map = defaultdict(<span class="nb">float</span>)
+    <span class="kw">for</span> lbl, sgie_conf, q_score <span class="kw">in</span> pairs:
+        <span class="cm"># Weight = product of both quality signals</span>
+        weight_map[lbl] += sgie_conf * q_score
+
+    <span class="kw">if not</span> weight_map:
+        <span class="kw">return</span> <span class="nb">None</span>, <span class="num">0.0</span>
+
+    stable_label = <span class="nb">max</span>(weight_map, key=weight_map.get)
+    total        = <span class="nb">sum</span>(weight_map.values())
+    stability    = weight_map[stable_label] / total
+
+    <span class="kw">return</span> stable_label, stability</pre>
+      </div>
+    </div>
+
+    <!-- ── 09 PROBE ── -->
+    <div class="section" id="probe">
+      <div class="section-marker">
+        <span class="section-num">09</span>
+        <h2>Full Probe Integration</h2>
+      </div>
+      <p>
+        Extend the existing best-frame buffer probe. Color label and confidence are appended
+        alongside the frame score and crop bytes, then consumed at flush time.
+      </p>
+
+      <div class="code-block">
+        <div class="code-file">Python · buffer_probe (extended)</div>
+        <pre><span class="kw">def</span> <span class="fn">buffer_probe</span>(pad, info, u_data):
+    gst_buffer = info.get_buffer()
+    batch_meta = pyds.gst_buffer_get_nvds_batch_meta(<span class="nb">hash</span>(gst_buffer))
+
+    l_frame = batch_meta.frame_meta_list
+    <span class="kw">while</span> l_frame:
+        frame_meta = pyds.NvDsFrameMeta.cast(l_frame.data)
+        src_id     = frame_meta.source_id
+
+        l_obj = frame_meta.obj_meta_list
+        <span class="kw">while</span> l_obj:
+            obj_meta = pyds.NvDsObjectMeta.cast(l_obj.data)
+            key      = (src_id, obj_meta.object_id)
+            rect     = obj_meta.rect_params
+
+            score               = frame_quality_score(obj_meta.confidence, rect, frame_meta)
+            crop                = extract_crop(gst_buffer, frame_meta, rect)
+            color_label, c_conf = get_color_prediction(obj_meta)  <span class="cm"># SGIE result</span>
+
+            object_frame_buffer[key].append({
+                <span class="st">"score"</span>:       score,
+                <span class="st">"frame_num"</span>:   frame_meta.frame_num,
+                <span class="st">"bbox"</span>:        (rect.left, rect.top, rect.width, rect.height),
+                <span class="st">"crop"</span>:        cv2.imencode(<span class="st">'.jpg'</span>, crop)[<span class="num">1</span>].tobytes(),
+                <span class="st">"color_label"</span>: color_label,   <span class="cm"># None if SGIE not available</span>
+                <span class="st">"color_conf"</span>:  c_conf,
+            })
+
+            last_seen[key] = frame_meta.frame_num
+            l_obj = l_obj.next
+        l_frame = l_frame.next
+
+    _flush_terminated_tracks(batch_meta)
+    <span class="kw">return</span> Gst.PadProbeReturn.OK
+
+
+<span class="kw">def</span> <span class="fn">flush_and_select</span>(key):
+    src_id, oid = key
+    frames = object_frame_buffer.get(key, [])
+    <span class="kw">if not</span> frames:
+        <span class="kw">return</span>
+
+    <span class="cm"># Best frames / crops (as before)</span>
+    sorted_f   = sorted(frames, key=<span class="kw">lambda</span> x: x[<span class="st">"score"</span>], reverse=<span class="nb">True</span>)
+    top_frames = sorted_f[:<span class="num">3</span>]
+    top_crops  = sorted_f[:<span class="num">2</span>]
+
+    <span class="cm"># Stable color via quality-gated vote</span>
+    color_entries = [
+        (e[<span class="st">"color_label"</span>], e[<span class="st">"color_conf"</span>])
+        <span class="kw">for</span> e <span class="kw">in</span> frames
+        <span class="kw">if</span> e[<span class="st">"color_label"</span>] <span class="kw">is not</span> <span class="nb">None</span>
+    ]
+    quality_scores = [
+        e[<span class="st">"score"</span>]
+        <span class="kw">for</span> e <span class="kw">in</span> frames
+        <span class="kw">if</span> e[<span class="st">"color_label"</span>] <span class="kw">is not</span> <span class="nb">None</span>
+    ]
+    stable_color, stability = quality_gated_color(color_entries, quality_scores)
+
+    result = {
+        <span class="st">"object_id"</span>:    oid,
+        <span class="st">"source_id"</span>:    src_id,
+        <span class="st">"stable_color"</span>: stable_color,
+        <span class="st">"stability"</span>:    round(stability, <span class="num">3</span>),
+        <span class="st">"n_color_votes"</span>: <span class="nb">len</span>(color_entries),
+        <span class="st">"top_frames"</span>:   top_frames,
+        <span class="st">"top_crops"</span>:    top_crops,
+    }
+    <span class="cm"># → push to Kafka / MariaDB / Milvus</span>
+
+    <span class="kw">del</span> object_frame_buffer[key]
+    last_seen.pop(key, <span class="nb">None</span>)</pre>
+      </div>
+    </div>
+
+    <!-- ── 10 AMBIGUOUS ── -->
+    <div class="section" id="ambiguous">
+      <div class="section-marker">
+        <span class="section-num">10</span>
+        <h2>Handling Ambiguous Cases</h2>
+      </div>
+
+      <table class="stability-table">
+        <thead>
+          <tr><th>Stability Score</th><th>Interpretation</th><th>Action</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              &gt; 0.80
+              <div class="meter-bar"><div class="meter-fill high" style="width:90%"></div></div>
+            </td>
+            <td>Clean, unambiguous color. Near-unanimous vote.</td>
+            <td>Accept. Write to DB with <code>color_confidence=HIGH</code>.</td>
+          </tr>
+          <tr>
+            <td>
+              0.50 – 0.80
+              <div class="meter-bar"><div class="meter-fill mid" style="width:55%"></div></div>
+            </td>
+            <td>Likely correct but some ambiguity. Silver/gray split common here.</td>
+            <td>Accept with <code>color_confidence=MED</code> flag. Exclude from strict ReID filter.</td>
+          </tr>
+          <tr>
+            <td>
+              &lt; 0.50
+              <div class="meter-bar"><div class="meter-fill low" style="width:25%"></div></div>
+            </td>
+            <td>Highly ambiguous. Votes spread across 3+ labels.</td>
+            <td>Mark as <code>unknown</code>. Do not use for ReID color filtering.</td>
+          </tr>
+          <tr>
+            <td>n_votes &lt; 5</td>
+            <td>Too few observations — object too brief or too small.</td>
+            <td>Defer. Do not commit a color label.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="callout warn">
+        <span class="callout-title">Hardest Pairs</span>
+        <strong>silver ↔ gray</strong> and <strong>white ↔ silver</strong> are the two most confused pairs — both are
+        specular and highly lighting-sensitive. Consider merging them into a single
+        <code>achromatic</code> class if your downstream application doesn't need the distinction.
+        Accuracy on the merged class is typically 15–20 percentage points higher.
+      </div>
+    </div>
+
+    <!-- ── 11 SUMMARY ── -->
+    <div class="section" id="summary">
+      <div class="section-marker">
+        <span class="section-num">11</span>
+        <h2>Summary Flow</h2>
+      </div>
+
+      <div class="flow">
+<span class="f-head">SGIE fires (per frame, per tracked vehicle)</span>
+  <span class="f-arrow">│</span>
+  <span class="f-arrow">├─</span> NvDsClassifierMeta → <span class="f-key">get_color_prediction(obj_meta)</span>
+  <span class="f-arrow">│    └─</span> filter by unique_component_id == 2
+  <span class="f-arrow">│    └─</span> returns <span class="f-val">(label: str, conf: float)</span>
+  <span class="f-arrow">│</span>
+  <span class="f-arrow">├─</span> Append to <span class="f-key">object_frame_buffer[key]</span>
+  <span class="f-arrow">│    └─</span> {score, frame_num, bbox, crop_bytes, <span class="f-val">color_label, color_conf</span>}
+  <span class="f-arrow">│</span>
+  <span class="f-arrow">└─</span> On track termination (pastFrame or timeout):
+
+<span class="f-head">flush_and_select(key)</span>
+  <span class="f-arrow">│</span>
+  <span class="f-arrow">├─</span> sorted by score → top[:3] frames, top[:2] crops
+  <span class="f-arrow">│</span>
+  <span class="f-arrow">└─</span> <span class="f-key">quality_gated_color(color_entries, quality_scores)</span>
+       <span class="f-arrow">├─</span> filter: sgie_conf &gt; 0.5
+       <span class="f-arrow">├─</span> weight = sgie_conf × frame_quality_score
+       <span class="f-arrow">├─</span> sum weights per label
+       <span class="f-arrow">└─</span> winner → <span class="f-val">stable_color</span> + <span class="f-val">stability ∈ [0,1]</span>
+
+<span class="f-head">Output per object</span>
+  <span class="f-arrow">├─</span> stable_color:  <span class="f-val">"silver"</span>
+  <span class="f-arrow">├─</span> stability:     <span class="f-val">0.84</span>   <span class="f-cm">← use to gate downstream consumers</span>
+  <span class="f-arrow">├─</span> n_color_votes: <span class="f-val">23</span>
+  <span class="f-arrow">├─</span> top_frames:    <span class="f-val">[frame_12, frame_19, frame_27]</span>
+  <span class="f-arrow">└─</span> top_crops:     <span class="f-val">[crop_19.jpg, crop_12.jpg]</span>
+      </div>
+    </div>
+
+    <footer>
+      <div class="footer-left">
+        DeepStream 8 · SGIE Color Classifier Reference<br>
+        process-mode=2 · NvDsClassifierMeta · Quality-Gated Vote
+      </div>
+      <div class="footer-right">
+        <span class="footer-badge">nvinfer SGIE</span>
+        <span class="footer-badge">NvDCF tracker</span>
+        <span class="footer-badge">pyds</span>
+        <span class="footer-badge">TensorRT</span>
+      </div>
+    </footer>
+
+  </main>
+</div>
+</body>
+</html>

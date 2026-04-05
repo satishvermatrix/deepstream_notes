@@ -1,0 +1,1898 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>nvinfer · PGIE / SGIE Config Reference</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:ital,wght@0,300;0,400;0,500;0,700;0,900;1,300&family=Archivo+Narrow:wght@400;500;600;700&family=Inconsolata:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+/* ══════════════════════════════════════════
+   DESIGN TOKENS
+══════════════════════════════════════════ */
+:root {
+  --bg:          #f7f4ef;
+  --bg2:         #eeebe4;
+  --bg3:         #e4e0d8;
+  --ink:         #1a1710;
+  --ink2:        #3a3628;
+  --ink3:        #6a6455;
+  --ink4:        #9a9080;
+  --rule:        #d4cfc4;
+
+  /* accent — deep terracotta + warm cream system */
+  --terra:       #c44a20;
+  --terra-dim:   #7a2e10;
+  --terra-pale:  #f5ded4;
+  --terra-bg:    #faf0ea;
+  --olive:       #6a7a30;
+  --olive-pale:  #e8ecd4;
+  --steel:       #3a5070;
+  --steel-pale:  #d8e4f0;
+  --amber:       #c07820;
+  --amber-pale:  #f5e8c8;
+  --plum:        #7040a0;
+  --plum-pale:   #ead8f5;
+
+  /* semantic param category colors */
+  --cat-model:   var(--steel);
+  --cat-input:   var(--olive);
+  --cat-output:  var(--terra);
+  --cat-net:     var(--amber);
+  --cat-sgie:    var(--plum);
+  --cat-perf:    #3a7060;
+  --cat-custom:  #804050;
+
+  --mono: 'Inconsolata', monospace;
+  --sans: 'Archivo', sans-serif;
+  --cond: 'Archivo Narrow', sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--bg);
+  color: var(--ink2);
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+/* ══════════════════════════════════════════
+   TOP BAR
+══════════════════════════════════════════ */
+.topbar {
+  background: var(--ink);
+  color: #c8c0b0;
+  padding: 0 40px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  border-bottom: 2px solid var(--terra);
+}
+
+.topbar-logo {
+  font-weight: 500;
+  color: #e8dcc8;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+.topbar-sep { color: #3a3628; }
+
+.topbar-item { color: #6a6455; }
+.topbar-item span { color: var(--terra); }
+
+.topbar-right {
+  margin-left: auto;
+  display: flex;
+  gap: 16px;
+}
+
+/* ══════════════════════════════════════════
+   HERO
+══════════════════════════════════════════ */
+.hero {
+  background: var(--ink);
+  padding: 64px 48px 56px;
+  position: relative;
+  overflow: hidden;
+}
+
+.hero::after {
+  content: 'nvinfer';
+  position: absolute;
+  right: -10px;
+  bottom: -20px;
+  font-family: var(--cond);
+  font-size: clamp(100px, 16vw, 180px);
+  font-weight: 700;
+  color: rgba(255,255,255,0.03);
+  letter-spacing: -0.04em;
+  pointer-events: none;
+  line-height: 1;
+}
+
+.hero-eyebrow {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--terra);
+  margin-bottom: 16px;
+}
+
+.hero h1 {
+  font-family: var(--cond);
+  font-size: clamp(2rem, 5vw, 3.8rem);
+  font-weight: 700;
+  color: #f0e8d8;
+  line-height: 1.0;
+  letter-spacing: -0.02em;
+  margin-bottom: 16px;
+}
+
+.hero h1 em {
+  color: var(--terra);
+  font-style: normal;
+}
+
+.hero-desc {
+  font-size: 14px;
+  color: #6a6455;
+  max-width: 600px;
+  line-height: 1.75;
+  font-weight: 300;
+}
+
+.hero-stats {
+  display: flex;
+  gap: 32px;
+  margin-top: 36px;
+  flex-wrap: wrap;
+}
+
+.stat {
+  font-family: var(--mono);
+}
+
+.stat-num {
+  font-size: 2rem;
+  font-weight: 500;
+  color: #f0e8d8;
+  line-height: 1;
+  display: block;
+}
+
+.stat-label {
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #4a4438;
+  margin-top: 4px;
+  display: block;
+}
+
+/* ══════════════════════════════════════════
+   CONTROLS BAR
+══════════════════════════════════════════ */
+.controls {
+  background: var(--bg2);
+  border-bottom: 1px solid var(--rule);
+  padding: 14px 48px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  position: sticky;
+  top: 44px;
+  z-index: 90;
+}
+
+.search-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 220px;
+  max-width: 380px;
+}
+
+.search-icon {
+  position: absolute;
+  left: 11px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--ink4);
+  font-family: var(--mono);
+  font-size: 13px;
+  pointer-events: none;
+}
+
+#searchInput {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  padding: 8px 12px 8px 32px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink);
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+#searchInput:focus { border-color: var(--terra); }
+#searchInput::placeholder { color: var(--ink4); }
+
+.filter-group {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.filter-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--ink4);
+  margin-right: 4px;
+}
+
+.fbtn {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 5px 12px;
+  border-radius: 2px;
+  border: 1px solid var(--rule);
+  background: var(--bg);
+  color: var(--ink3);
+  cursor: pointer;
+  transition: all 0.12s;
+  white-space: nowrap;
+}
+
+.fbtn:hover { border-color: var(--terra); color: var(--terra); }
+.fbtn.active { background: var(--terra); border-color: var(--terra); color: #fff; }
+
+.cat-dot {
+  display: inline-block;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  margin-right: 5px;
+  vertical-align: middle;
+}
+
+.results-count {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--ink4);
+  letter-spacing: 0.08em;
+  margin-left: auto;
+}
+
+/* ══════════════════════════════════════════
+   LAYOUT
+══════════════════════════════════════════ */
+.body-wrap {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  min-height: calc(100vh - 44px);
+}
+
+/* ── SIDEBAR ── */
+aside {
+  border-right: 1px solid var(--rule);
+  padding: 28px 20px;
+  position: sticky;
+  top: calc(44px + 53px);
+  height: calc(100vh - 44px - 53px);
+  overflow-y: auto;
+  background: var(--bg2);
+}
+
+.aside-section {
+  margin-bottom: 24px;
+}
+
+.aside-title {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--ink4);
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--rule);
+}
+
+aside a {
+  display: block;
+  font-size: 12px;
+  color: var(--ink3);
+  text-decoration: none;
+  padding: 4px 8px;
+  border-radius: 2px;
+  transition: all 0.12s;
+  line-height: 1.5;
+}
+
+aside a:hover {
+  background: var(--terra-pale);
+  color: var(--terra);
+}
+
+/* ── MAIN ── */
+main {
+  padding: 36px 48px 80px;
+}
+
+/* ══════════════════════════════════════════
+   SECTION BLOCKS
+══════════════════════════════════════════ */
+.config-section {
+  margin-bottom: 52px;
+}
+
+.section-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid var(--ink);
+}
+
+.section-num {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--ink4);
+  letter-spacing: 0.15em;
+}
+
+.section-title {
+  font-family: var(--cond);
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+  text-transform: uppercase;
+}
+
+.section-badge {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 3px 9px;
+  border-radius: 2px;
+  border: 1px solid;
+  margin-left: auto;
+}
+
+.section-desc {
+  font-size: 13.5px;
+  color: var(--ink3);
+  margin-bottom: 18px;
+  max-width: 720px;
+  line-height: 1.75;
+}
+
+/* ══════════════════════════════════════════
+   PARAM TABLE
+══════════════════════════════════════════ */
+.param-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 8px;
+}
+
+.param-table thead tr {
+  background: var(--ink);
+}
+
+.param-table th {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #8a8070;
+  padding: 9px 14px;
+  text-align: left;
+  font-weight: 400;
+  border-right: 1px solid #2a2820;
+  white-space: nowrap;
+}
+
+.param-table th:last-child { border-right: none; }
+
+.param-row {
+  border-bottom: 1px solid var(--rule);
+  transition: background 0.1s;
+}
+
+.param-row:hover { background: rgba(196,74,32,0.04); }
+
+.param-row.hidden { display: none; }
+
+.param-row td {
+  padding: 10px 14px;
+  vertical-align: top;
+  font-size: 12.5px;
+}
+
+/* Col 1: parameter name */
+.param-name {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink);
+  white-space: nowrap;
+  border-right: 1px solid var(--rule);
+  position: relative;
+  padding-left: 18px !important;
+}
+
+.param-name::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  border-radius: 0;
+}
+
+/* Col 2: type */
+.param-type {
+  font-family: var(--mono);
+  font-size: 11px;
+  white-space: nowrap;
+  border-right: 1px solid var(--rule);
+  color: var(--ink3);
+}
+
+/* Col 3: default */
+.param-default {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--olive);
+  border-right: 1px solid var(--rule);
+  white-space: nowrap;
+}
+
+.param-default.no-default { color: var(--ink4); font-style: italic; }
+
+/* Col 4: values */
+.param-values {
+  font-size: 12px;
+  color: var(--ink3);
+  border-right: 1px solid var(--rule);
+  min-width: 120px;
+}
+
+/* Col 5: description */
+.param-desc {
+  font-size: 12.5px;
+  color: var(--ink2);
+  line-height: 1.6;
+}
+
+/* Col 6: applies to */
+.param-scope {
+  white-space: nowrap;
+}
+
+/* Category colors on left border */
+.cat-model   .param-name::before { background: var(--cat-model); }
+.cat-input   .param-name::before { background: var(--cat-input); }
+.cat-output  .param-name::before { background: var(--cat-output); }
+.cat-net     .param-name::before { background: var(--cat-net); }
+.cat-sgie    .param-name::before { background: var(--cat-sgie); }
+.cat-perf    .param-name::before { background: var(--cat-perf); }
+.cat-custom  .param-name::before { background: var(--cat-custom); }
+
+/* Scope badges */
+.scope-badge {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  padding: 2px 7px;
+  border-radius: 2px;
+  border: 1px solid;
+  white-space: nowrap;
+  margin: 1px 2px 1px 0;
+}
+
+.scope-pgie { color: var(--terra); border-color: var(--terra-dim); background: var(--terra-pale); }
+.scope-sgie { color: var(--plum); border-color: #9060c0; background: var(--plum-pale); }
+.scope-both { color: var(--steel); border-color: #2a4060; background: var(--steel-pale); }
+
+/* Value tags */
+.val-tag {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 10px;
+  background: var(--bg3);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  padding: 1px 6px;
+  margin: 1px 2px 1px 0;
+  color: var(--ink2);
+}
+
+.val-tag.highlight {
+  background: var(--terra-pale);
+  border-color: var(--terra-dim);
+  color: var(--terra);
+}
+
+/* Important flag */
+.param-row.important .param-name {
+  color: var(--terra);
+}
+
+.imp-star {
+  color: var(--terra);
+  font-size: 10px;
+  vertical-align: super;
+  margin-left: 2px;
+}
+
+/* ══════════════════════════════════════════
+   CALLOUTS
+══════════════════════════════════════════ */
+.callout {
+  padding: 12px 16px 12px 44px;
+  border-radius: 3px;
+  margin: 14px 0;
+  font-size: 13px;
+  border: 1px solid;
+  position: relative;
+  line-height: 1.65;
+}
+
+.callout::before {
+  position: absolute;
+  left: 14px;
+  top: 13px;
+  font-size: 14px;
+}
+
+.callout.note   { background: var(--steel-pale); border-color: #b0c8e0; color: var(--steel); }
+.callout.warn   { background: var(--amber-pale); border-color: #e0c080; color: #705010; }
+.callout.tip    { background: var(--olive-pale); border-color: #b0c080; color: var(--olive); }
+.callout.danger { background: var(--terra-pale); border-color: #d08060; color: var(--terra); }
+
+.callout.note::before   { content: 'ℹ'; color: var(--steel); }
+.callout.warn::before   { content: '⚠'; color: var(--amber); }
+.callout.tip::before    { content: '✦'; color: var(--olive); }
+.callout.danger::before { content: '✖'; color: var(--terra); }
+
+.callout-title {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  font-weight: 500;
+  display: block;
+  margin-bottom: 3px;
+}
+
+.callout.note   .callout-title { color: var(--steel); }
+.callout.warn   .callout-title { color: var(--amber); }
+.callout.tip    .callout-title { color: var(--olive); }
+.callout.danger .callout-title { color: var(--terra); }
+
+/* ══════════════════════════════════════════
+   LEGEND + CATEGORY KEY
+══════════════════════════════════════════ */
+.legend-strip {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  background: var(--bg3);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  padding: 12px 16px;
+  margin-bottom: 24px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--ink3);
+  text-transform: uppercase;
+}
+
+.legend-swatch {
+  width: 12px; height: 12px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+/* ══════════════════════════════════════════
+   SECTION CODE EXAMPLE
+══════════════════════════════════════════ */
+.ini-example {
+  background: var(--ink);
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 16px 0;
+}
+
+.ini-top {
+  background: #111008;
+  padding: 8px 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #2a2820;
+}
+
+.ini-fname {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: #6a6455;
+  text-transform: uppercase;
+}
+
+.ini-tag {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--terra);
+  border: 1px solid var(--terra-dim);
+  padding: 2px 8px;
+  border-radius: 2px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.ini-body {
+  padding: 16px 18px;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.85;
+  color: #8a8070;
+  overflow-x: auto;
+}
+
+.ini-section { color: #e8c060; font-weight: 500; }
+.ini-key     { color: #80b4d8; }
+.ini-val     { color: #90d090; }
+.ini-cm      { color: #2a2820; font-style: italic; }
+.ini-hl      { color: var(--terra); }  /* highlighted important keys */
+
+/* ══════════════════════════════════════════
+   FOOTER
+══════════════════════════════════════════ */
+footer {
+  background: var(--ink);
+  padding: 28px 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.footer-left {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: #4a4438;
+  line-height: 1.8;
+}
+
+.footer-right {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.fbadge {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #4a4438;
+  border: 1px solid #2a2820;
+  padding: 3px 9px;
+  border-radius: 2px;
+}
+
+/* ══════════════════════════════════════════
+   EMPTY STATE
+══════════════════════════════════════════ */
+.empty-state {
+  text-align: center;
+  padding: 48px 24px;
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--ink4);
+  display: none;
+}
+
+code {
+  font-family: var(--mono);
+  font-size: 11px;
+  background: var(--bg3);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  padding: 1px 5px;
+  color: var(--terra);
+}
+
+@media (max-width: 900px) {
+  .body-wrap { grid-template-columns: 1fr; }
+  aside { display: none; }
+  main { padding: 24px 20px 60px; }
+  .controls { padding: 12px 20px; }
+  .hero { padding: 40px 20px 36px; }
+  footer { padding: 20px; }
+  .param-values, .param-type { display: none; }
+}
+</style>
+</head>
+<body>
+
+<!-- ══ TOPBAR ══ -->
+<div class="topbar">
+  <span class="topbar-logo">DeepStream 8</span>
+  <span class="topbar-sep">//</span>
+  <span class="topbar-item">nvinfer · <span>PGIE &amp; SGIE</span> Config Reference</span>
+  <div class="topbar-right">
+    <span class="topbar-item">plugin: <span>nvinfer</span></span>
+    <span class="topbar-item">DS: <span>8.x</span></span>
+  </div>
+</div>
+
+<!-- ══ HERO ══ -->
+<div class="hero">
+  <div class="hero-eyebrow">nvinfer · Primary &amp; Secondary Inference Engine</div>
+  <h1>PGIE / SGIE<br><em>Config</em> Reference</h1>
+  <p class="hero-desc">
+    Complete parameter reference for the <code>[property]</code> group in DeepStream nvinfer config files.
+    Covers every key for model loading, preprocessing, network type, SGIE chaining, output tensor control,
+    TensorRT engine management, custom parsers, and performance tuning.
+  </p>
+  <div class="hero-stats">
+    <div class="stat">
+      <span class="stat-num" id="totalCount">—</span>
+      <span class="stat-label">Total Parameters</span>
+    </div>
+    <div class="stat">
+      <span class="stat-num">7</span>
+      <span class="stat-label">Categories</span>
+    </div>
+    <div class="stat">
+      <span class="stat-num">3</span>
+      <span class="stat-label">Network Types</span>
+    </div>
+    <div class="stat">
+      <span class="stat-num">2</span>
+      <span class="stat-label">Process Modes</span>
+    </div>
+  </div>
+</div>
+
+<!-- ══ CONTROLS ══ -->
+<div class="controls">
+  <div class="search-wrap">
+    <span class="search-icon">⌕</span>
+    <input type="text" id="searchInput" placeholder="Search parameters…" oninput="applyFilters()">
+  </div>
+
+  <div class="filter-group">
+    <span class="filter-label">Scope:</span>
+    <button class="fbtn active" data-scope="all" onclick="setScope('all', this)">All</button>
+    <button class="fbtn" data-scope="pgie" onclick="setScope('pgie', this)">
+      <span class="cat-dot" style="background:var(--terra)"></span>PGIE only
+    </button>
+    <button class="fbtn" data-scope="sgie" onclick="setScope('sgie', this)">
+      <span class="cat-dot" style="background:var(--plum)"></span>SGIE only
+    </button>
+    <button class="fbtn" data-scope="both" onclick="setScope('both', this)">
+      <span class="cat-dot" style="background:var(--steel)"></span>Both
+    </button>
+  </div>
+
+  <div class="filter-group">
+    <span class="filter-label">Category:</span>
+    <button class="fbtn active" data-cat="all" onclick="setCat('all', this)">All</button>
+    <button class="fbtn" data-cat="model" onclick="setCat('model', this)">Model</button>
+    <button class="fbtn" data-cat="input" onclick="setCat('input', this)">Input</button>
+    <button class="fbtn" data-cat="output" onclick="setCat('output', this)">Output</button>
+    <button class="fbtn" data-cat="net" onclick="setCat('net', this)">Network</button>
+    <button class="fbtn" data-cat="sgie" onclick="setCat('sgie', this)">SGIE Chain</button>
+    <button class="fbtn" data-cat="perf" onclick="setCat('perf', this)">Performance</button>
+    <button class="fbtn" data-cat="custom" onclick="setCat('custom', this)">Custom</button>
+  </div>
+
+  <span class="results-count" id="resultsCount"></span>
+</div>
+
+<!-- ══ BODY ══ -->
+<div class="body-wrap">
+
+<!-- SIDEBAR -->
+<aside>
+  <div class="aside-section">
+    <div class="aside-title">Sections</div>
+    <a href="#model">Model &amp; Engine</a>
+    <a href="#input-preproc">Input &amp; Preprocessing</a>
+    <a href="#network">Network Type</a>
+    <a href="#output">Output &amp; Tensors</a>
+    <a href="#sgie-chain">SGIE Chaining</a>
+    <a href="#perf">Performance &amp; Batching</a>
+    <a href="#custom">Custom Parsers &amp; Libs</a>
+  </div>
+  <div class="aside-section">
+    <div class="aside-title">Quick Examples</div>
+    <a href="#example-pgie">PGIE Example</a>
+    <a href="#example-sgie-cls">SGIE Classifier</a>
+    <a href="#example-sgie-det">SGIE Detector</a>
+  </div>
+</aside>
+
+<!-- MAIN -->
+<main>
+
+<!-- Legend -->
+<div class="legend-strip">
+  <div class="legend-item"><div class="legend-swatch" style="background:var(--cat-model)"></div>Model &amp; Engine</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:var(--cat-input)"></div>Input &amp; Preprocessing</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:var(--cat-output)"></div>Output &amp; Tensors</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:var(--cat-net)"></div>Network Type</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:var(--cat-sgie)"></div>SGIE Chaining</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:var(--cat-perf)"></div>Performance</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:var(--cat-custom)"></div>Custom Parsers</div>
+  <div style="margin-left:auto;display:flex;align-items:center;gap:12px">
+    <span style="font-family:var(--mono);font-size:10px;color:var(--terra)">★ = Critical parameter</span>
+  </div>
+</div>
+
+<div id="emptyState" class="empty-state">No parameters match your search.</div>
+
+<!-- ══════════════════════════════════════
+     SECTION 1: MODEL & ENGINE
+══════════════════════════════════════ -->
+<div class="config-section" id="model">
+  <div class="section-head">
+    <span class="section-num">01</span>
+    <span class="section-title">Model &amp; Engine</span>
+    <span class="section-badge" style="color:var(--steel);border-color:var(--steel);background:var(--steel-pale)">Model Loading</span>
+  </div>
+  <p class="section-desc">
+    Parameters controlling how nvinfer locates, loads, and caches the TensorRT engine.
+    Engine files are built once and cached — subsequent runs skip the build step.
+  </p>
+
+  <table class="param-table" id="table-model">
+    <thead>
+      <tr>
+        <th style="width:220px">Parameter</th>
+        <th style="width:80px">Type</th>
+        <th style="width:100px">Default</th>
+        <th style="width:160px">Values</th>
+        <th>Description</th>
+        <th style="width:100px">Applies To</th>
+      </tr>
+    </thead>
+    <tbody>
+
+      <tr class="param-row important cat-model" data-cat="model" data-scope="both" data-search="model-engine-file engine trt tensorrt cache">
+        <td class="param-name">model-engine-file<span class="imp-star">★</span></td>
+        <td class="param-type">string</td>
+        <td class="param-default no-default">required</td>
+        <td class="param-values"><span class="val-tag">path/to/model.engine</span></td>
+        <td class="param-desc">Path to the serialized TensorRT engine. If the file doesn't exist, nvinfer builds it from the model source and saves it here. Always pre-build on the target GPU for reproducibility.</td>
+        <td class="param-scope"><span class="scope-badge scope-both">Both</span></td>
+      </tr>
+
+      <tr class="param-row cat-model" data-cat="model" data-scope="both" data-search="onnx-file onnx model source">
+        <td class="param-name">onnx-file</td>
+        <td class="param-type">string</td>
+        <td class="param-default no-default">—</td>
+        <td class="param-values"><span class="val-tag">path/to/model.onnx</span></td>
+        <td class="param-desc">Path to ONNX model. Used to build the TRT engine if model-engine-file doesn't exist. One of onnx-file, tlt-encoded-model, or model-file must be provided if no engine exists.</td>
+        <td class="param-scope"><span class="scope-badge scope-both">Both</span></td>
+      </tr>
+
+      <tr class="param-row cat-model" data-cat="model" data-scope="both" data-search="tlt-encoded-model tlt model nvidia">
+        <td class="param-name">tlt-encoded-model</td>
+        <td class="param-type">string</td>
+        <td class="param-default no-default">—</td>
+        <td class="param-values"><span class="val-tag">path/to/model.etlt</span></td>
+        <td class="param-desc">Path to TAO/TLT encrypted model (.etlt). Requires tlt-model-key for decryption. Used for NVIDIA TAO Toolkit models.</td>
+        <td class="param-scope"><span class="scope-badge scope-both">Both</span></td>
+      </tr>
+
+      <tr class="param-row cat-model" data-cat="model" data-scope="both" data-search="tlt-model-key key encryption tao">
+        <td class="param-name">tlt-model-key</td>
+        <td class="param-type">string</td>
+        <td class="param-default no-default">—</td>
+        <td class="param-values"><span class="val-tag">string</span></td>
+        <td class="param-desc">Encryption key for decrypting tlt-encoded-model files. Required when using TAO Toolkit encrypted models.</td>
+        <td class="param-scope"><span class="scope-badge scope-both">Both</span></td>
+      </tr>
+
+      <tr class="param-row cat-model" data-cat="model" data-scope="both" data-search="model-file caffe prototxt weights">
+        <td class="param-name">model-file</td>
+        <td class="param-type">string</td>
+        <td class="param-default no-default">—</td>
+        <td class="param-values"><span class="val-tag">.caffemodel</span></td>
+        <td class="param-desc">Path to Caffe model weights file. Caffe support is legacy — ONNX is preferred for all new models.</td>
+        <td class="param-scope"><span class="scope-badge scope-both">Both</span></td>
+      </tr>
+
+      <tr class="param-row cat-model" data-cat="model" data-scope="both" data-search="proto-file caffe prototxt">
+        <td class="param-name">proto-file</td>
+        <td class="param-type">string</td>
+        <td class="param-default no-default">—</td>
+        <td class="param-values"><span class="val-tag">.prototxt</span></td>
+        <td class="param-desc">Path to Caffe network prototxt. Required alongside model-file for Caffe models.</td>
+        <td class="param-scope"><span class="scope-badge scope-both">Both</span></td>
+      </tr>
+
+      <tr class="param-row cat-model" data-cat="model" data-scope="both" data-search="labelfile-path labels classes txt">
+        <td class="param-name">labelfile-path</td>
+        <td class="param-type">string</td>
+        <td class="param-default no-default">—</td>
+        <td class="param-values"><span class="val-tag">labels.txt</span></td>
+        <td class="param-desc">Path to text file with one class label per line. Line index maps to class ID. Used by nvinfer to populate result_label in NvDsLabelInfo.</td>
+        <td class="param-scope"><span class="scope-badge scope-both">Both</span></td>
+      </tr>
+
+      <tr class="param-row cat-model" data-cat="model" data-scope="both" data-search="gpu-id gpu device cuda">
+        <td class="param-name">gpu-id</td>
+        <td class="param-type">uint</td>
+        <td class="param-default">0</td>
+        <td class="param-values"><span class="val-tag">0</span><span class="val-tag">1</span><span class="val-tag">N</span></td>
+        <td class="param-desc">GPU device index to run inference on. All GIEs in a pipeline must share the same gpu-id unless using multi-GPU explicit mode.</td>
+        <td class="param-scope"><span class="scope-badge scope-both">Both</span></td>
+      </tr>
+
+      <tr class="param-row cat-model" data-cat="model" data-scope="both" data-search="gie-unique-id uid unique id component">
+        <td class="param-name">gie-unique-id<span class="imp-star">★</span></td>
+        <td class="param-type">uint</td>
+        <td class="param-default no-default">required</td>
+        <td class="param-values"><span class="val-tag">1</span><span class="val-tag">2</span><span class="val-tag">3…</span></td>
+        <td class="param-desc">Unique identifier for this GIE instance. Used to tag NvDsClassifierMeta.unique_component_id and NvDsInferTensorMeta.unique_id. PGIE typically uses 1. Each SGIE must have a distinct ID.</td>
+        <td class="param-scope"><span class="scope-badge scope-both">Both</span></td>
+      </tr>
+
+    </tbody>
+  </table>
+</div>
+
+<!-- ══════════════════════════════════════
+     SECTION 2: INPUT & PREPROCESSING
+══════════════════════════════════════ -->
+<div class="config-section" id="input-preproc">
+  <div class="section-head">
+    <span class="section-num">02</span>
+    <span class="section-title">Input &amp; Preprocessing</span>
+    <span class="section-badge" style="color:var(--olive);border-color:var(--olive);background:var(--olive-pale)">Preprocessing</span>
+  </div>
+  <p class="section-desc">
+    Controls how nvinfer normalizes pixel values before feeding them to the network.
+    Must match exactly what was used during model training. Normalization mismatch silently degrades accuracy.
+  </p>
+
+  <div class="callout danger">
+    <span class="callout-title">Normalization Mismatch Warning</span>
+    These values <strong>must exactly replicate</strong> your training preprocessing. A wrong
+    <code>net-scale-factor</code> or <code>offsets</code> silently reduces accuracy by 15–30%.
+    Formula: <code>output = net-scale-factor × (pixel_value − offset)</code>
+  </div>
+
+  <table class="param-table" id="table-input">
+    <thead>
+      <tr>
+        <th style="width:220px">Parameter</th>
+        <th style="width:80px">Type</th>
+        <th style="width:100px">Default</th>
+        <th style="width:160px">Values</th>
+        <th>Description</th>
+        <th style="width:100px">Applies To</th>
+      </tr>
+    </thead>
+    <tbody>
+
+      <tr class="param-row important cat-input" data-cat="input" data-scope="both" data-search="net-scale-factor scale normalize pixel">
+        <td class="param-name">net-scale-factor<span class="imp-star">★</span></td>
+        <td class="param-type">float</td>
+        <td class="param-default">1.0</td>
+        <td class="param-values"><span class="val-tag">1/255 = 0.00392</span></td>
+        <td class="param-desc">Multiplier applied to each pixel value after subtracting offsets. For [0,1] normalized nets: 0.00392156... (1/255). For ImageNet-normalized: 1/(255×std). Must match training.</td>
+        <td class="param-scope"><span class="scope-badge scope-both">Both</span></td>
+      </tr>
+
+      <tr class="param-row important cat-input" data-cat="input" data-scope="both" data-search="offsets mean channel subtract imagenet">
+        <td class="param-name">offsets<span class="imp-star">★</span></td>
+        <td class="param-type">string</td>
+        <td class="param-default">0</td>
+        <td class="param-values"><span class="val-tag">R;G;B</span></td>
+        <td class="param-desc">Per-channel mean values subtracted from each pixel before scaling. Semicolon-separated R;G;B. ImageNet: 123.675;116.280;103.530 (= mean×255). Zero for simple /255 normalization.</td>
+        <td class="param-scope"><span class="scope-badge scope-both">Both</span></td>
+      </tr>
+
+      <tr class="param-row cat-input" data-cat="input" data-scope="both" data-search="infer-dims input dimensions width height channel">
+        <td class="param-name">infer-dims</td>
+        <td class="param-type">string</td>
+        <td class="param-default no-default">from model</td>
+        <td class="param-values"><span class="val-tag">C;H;W</span></td>
+        <td class="param-desc">Override input tensor dimensions as Channel;Height;Width. Usually inferred from the ONNX model. Override only if model has dynamic input shapes.</td>
+        <td class="param-scope"><span class="scope-badge scope-both">Both</span></td>
+      </tr>
+
+      <tr class="param-row cat-input" data-cat="input" data-scope="both" data-search="network-input-order channel CHW HWC order">
+        <td class="param-name">network-input-order</td>
+        <td class="param-type">uint</td>
+        <td class="param-default">0</td>
+        <td class="param-values"><span class="val-tag highlight">0=NCHW</span><span class="val-tag">1=NHWC</span></td>
+        <td class="param-desc">Memory layout of the input tensor. 0=NCHW (PyTorch default), 1=NHWC (TensorFlow default). Most TensorRT models expect NCHW.</td>
+        <td class="param-scope"><span class="scope-badge scope-both">Both</span></td>
+      </tr>
+
+      <tr class="param-row cat-input" data-cat="input" data-scope="both" data-search="color-format bgr rgb grayscale input color">
+        <td class="param-name">color-format</td>
+        <td class="param-type">uint</td>
+        <td class="param-default">0</td>
+        <td class="param-values"><span class="val-tag highlight">0=RGB</span><span class="val-tag">1=BGR</span><span class="val-tag">2=GRAY</span></td>
+        <td class="param-desc">Expected input color format. DeepStream surfaces are NV12/RGBA — nvinfer converts automatically. Set to match your model's training color space. Most PyTorch/TF models expect RGB.</td>
+        <td class="param-scope"><span class="scope-badge scope-both">Both</span></td>
+      </tr>
+
+      <tr class="param-row cat-input" data-cat="input" data-scope="both" data-search="maintain-aspect-ratio aspect ratio resize letterbox">
+        <td class="param-name">maintain-aspect-ratio</td>
+        <td class="param-type">bool</td>
+        <td class="param-default">0</td>
+        <td class="param-values"><span class="val-tag">0</span><span class="val-tag">1</span></td>
+        <td class="param-desc">When 1, nvinfer letterboxes the input to preserve aspect ratio before resizing to infer-dims. Avoids object distortion. Requires symmetric-padding or custom preprocessing to be effective.</td>
+        <td class="param-scope"><span class="scope-badge scope-both">Both</span></td>
+      </tr>
+
+      <tr class="param-row cat-input" data-cat="input" data-scope="both" data-search="symmetric-padding padding letterbox">
+        <td class="param-name">symmetric-padding</td>
+        <td class="param-type">bool</td>
+        <td class="param-default">0</td>
+        <td class="param-values"><span class="val-tag">0</span><span class="val-tag">1</span></td>
+        <td class="param-desc">When 1 (with maintain-aspect-ratio=1), pads equally on both sides. When 0, pads on right/bottom only. Symmetric mode is required for accurate coordinate mapping post-resize.</td>
+        <td class="param-scope"><span class="scope-badge scope-both">Both</span></td>
+      </tr>
+
+      <tr class="param-row cat-input" data-cat="input" data-scope="sgie" data-search="input-object-min-width min width height filter small">
+        <td class="param-name">input-object-min-width<span class="imp-star">★</span></td>
+        <td class="param-type">uint</td>
+        <td class="param-default">0</td>
+        <td class="param-values"><span class="val-tag">pixels</span></td>
+        <td class="param-desc">SGIE only. Objects with bbox width smaller than this value are skipped — no inference is run. Critical for quality gating: skip tiny/distant objects where the classifier would get noisy crops.</td>
+        <td class="param-scope"><span class="scope-badge scope-sgie">SGIE</span></td>
+      </tr>
+
+      <tr class="param-row cat-input" data-cat="input" data-scope="sgie" data-search="input-object-min-height min height filter small">
+        <td class="param-name">input-object-min-height</td>
+        <td class="param-type">uint</td>
+        <td class="param-default">0</td>
+        <td class="param-values"><span class="val-tag">pixels</span></td>
+        <td class="param-desc">SGIE only. Objects with bbox height smaller than this value are skipped. Use alongside input-object-min-width to define minimum crop quality gate.</td>
+        <td class="param-scope"><span class="scope-badge scope-sgie">SGIE</span></td>
+      </tr>
+
+      <tr class="param-row cat-input" data-cat="input" data-scope="sgie" data-search="input-object-max-width max width crop size">
+        <td class="param-name">input-object-max-width</td>
+        <td class="param-type">uint</td>
+        <td class="param-default">0 (no limit)</td>
+        <td class="param-values"><span class="val-tag">pixels</span></td>
+        <td class="param-desc">SGIE only. Objects wider than this are skipped. Rarely used — useful for filtering out full-frame detections or very large overlapping boxes.</td>
+        <td class="param-scope"><span class="scope-badge scope-sgie">SGIE</span></td>
+      </tr>
+
+      <tr class="param-row cat-input" data-cat="input" data-scope="sgie" data-search="input-object-max-height max height crop">
+        <td class="param-name">input-object-max-height</td>
+        <td class="param-type">uint</td>
+        <td class="param-default">0 (no limit)</td>
+        <td class="param-values"><span class="val-tag">pixels</span></td>
+        <td class="param-desc">SGIE only. Objects taller than this are skipped.</td>
+        <td class="param-scope"><span class="scope-badge scope-sgie">SGIE</span></td>
+      </tr>
+
+      <tr class="param-row cat-input" data-cat="input" data-scope="both" data-search="interval frame skip every nth frame">
+        <td class="param-name">interval</td>
+        <td class="param-type">uint</td>
+        <td class="param-default">0</td>
+        <td class="param-values"><span class="val-tag">0=every frame</span><span class="val-tag">N=every N+1</span></td>
+        <td class="param-desc">Number of consecutive frames to skip between inference. 0 = run on every frame. 1 = run every 2nd frame. Useful for reducing SGIE compute cost on high-fps streams.</td>
+        <td class="param-scope"><span class="scope-badge scope-both">Both</span></td>
+      </tr>
+
+      <tr class="param-row cat-input" data-cat="input" data-scope="pgie" data-search="tiled-display tile roi region interest">
+        <td class="param-name">input-tensor-from-meta</td>
+        <td class="param-type">bool</td>
+        <td class="param-default">0</td>
+        <td class="param-values"><span class="val-tag">0</span><span class="val-tag">1</span></td>
+        <td class="param-desc">When 1, reads the input tensor from upstream NvDsUserMeta (e.g. from nvdspreprocess plugin) instead of performing internal preprocessing. Required when using nvdspreprocess for custom batching.</td>
+        <td class="param-scope"><span class="scope-badge scope-both">Both</span></td>
+      </tr>
+
+    </tbody>
+  </table>
+</div>
+
+<!-- ══════════════════════════════════════
+     SECTION 3: NETWORK TYPE
+══════════════════════════════════════ -->
+<div class="config-section" id="network">
+  <div class="section-head">
+    <span class="section-num">03</span>
+    <span class="section-title">Network Type &amp; Process Mode</span>
+    <span class="section-badge" style="color:var(--amber);border-color:var(--amber);background:var(--amber-pale)">Network</span>
+  </div>
+  <p class="section-desc">
+    The most fundamental configuration choices. <code>network-type</code> determines how nvinfer
+    interprets the output tensor. <code>process-mode</code> determines whether inference runs on
+    the full frame (PGIE) or on cropped objects (SGIE).
+  </p>
+
+  <table class="param-table" id="table-net">
+    <thead>
+      <tr>
+        <th style="width:220px">Parameter</th>
+        <th style="width:80px">Type</th>
+        <th style="width:100px">Default</th>
+        <th style="width:160px">Values</th>
+        <th>Description</th>
+        <th style="width:100px">Applies To</th>
+      </tr>
+    </thead>
+    <tbody>
+
+      <tr class="param-row important cat-net" data-cat="net" data-scope="both" data-search="network-type detector classifier segmentation type">
+        <td class="param-name">network-type<span class="imp-star">★</span></td>
+        <td class="param-type">uint</td>
+        <td class="param-default">0</td>
+        <td class="param-values">
+          <span class="val-tag highlight">0=detector</span>
+          <span class="val-tag">1=classifier</span>
+          <span class="val-tag">2=segmentation</span>
+          <span class="val-tag">3=instance seg</span>
+          <span class="val-tag">100=other</span>
+        </td>
+        <td class="param-desc">
+          Determines output interpretation. <strong>0=detector</strong>: decodes bbox + NMS → NvDsObjectMeta.
+          <strong>1=classifier</strong>: argmax → NvDsClassifierMeta/LabelInfo.
+          <strong>2=segmentation</strong>: pixel-wise class map.
+          <strong>3=instance segmentation</strong>: mask per object.
+          <strong>100=other</strong>: raw tensor only, no built-in decode.
+        </td>
+        <td class="param-scope"><span class="scope-badge scope-both">Both</span></td>
+      </tr>
+
+      <tr class="param-row important cat-net" data-cat="net" data-scope="both" data-search="process-mode primary secondary pgie sgie mode">
+        <td class="param-name">process-mode<span class="imp-star">★</span></td>
+        <td class="param-type">uint</td>
+        <td class="param-default">1</td>
+        <td class="param-values"><span class="val-tag highlight">1=primary</span><span class="val-tag">2=secondary</span></td>
+        <td class="param-desc">
+          <strong>1=primary (PGIE)</strong>: runs on full frame. Creates NvDsObjectMeta entries.
+          <strong>2=secondary (SGIE)</strong>: crops each object bbox from the frame surface and runs inference per crop. Requires operate-on-gie-id to identify which objects to process.
+        </td>
+        <td class="param-scope"><span class="scope-badge scope-both">Both</span></td>
+      </tr>
+
+      <tr class="param-row cat-net" data-cat="net" data-scope="both" data-search="num-detected-classes classes number detection">
+        <td class="param-name">num-detected-classes</td>
+        <td class="param-type">uint</td>
+        <td class="param-default no-default">required</td>
+        <td class="param-values"><span class="val-tag">integer ≥ 1</span></td>
+        <td class="param-desc">Number of output classes. For detectors: total object classes including background if applicable. For classifiers: total label count. Must match model output exactly.</td>
+        <td class="param-scope"><span class="scope-badge scope-both">Both</span></td>
+      </tr>
+
+      <tr class="param-row cat-net" data-cat="net" data-scope="both" data-search="classifier-threshold threshold confidence minimum">
+        <td class="param-name">classifier-threshold</td>
+        <td class="param-type">float</td>
+        <td class="param-default">0.5</td>
+        <td class="param-values"><span class="val-tag">[0.0, 1.0]</span></td>
+        <td class="param-desc">Minimum softmax probability for the classifier to report a result via NvDsLabelInfo. Results below this threshold are suppressed. Lower values = more results but potentially noisy.</td>
+        <td class="param-scope"><span class="scope-badge scope-both">Both</span></td>
+      </tr>
+
+      <tr class="param-row cat-net" data-cat="net" data-scope="pgie" data-search="threshold confidence detection minimum detector">
+        <td class="param-name">threshold</td>
+        <td class="param-type">float</td>
+        <td class="param-default">0.3</td>
+        <td class="param-values"><span class="val-tag">[0.0, 1.0]</span></td>
+        <td class="param-desc">Detector object confidence threshold. Detections below this confidence are discarded before NMS. Applies to network-type=0 only. Per-class thresholds can be set via per-class-attrs-group.</td>
+        <td class="param-scope"><span class="scope-badge scope-pgie">PGIE</span></td>
+      </tr>
+
+      <tr class="param-row cat-net" data-cat="net" data-scope="pgie" data-search="nms-iou-threshold nms iou overlap non-maximum suppression">
+        <td class="param-name">nms-iou-threshold</td>
+        <td class="param-type">float</td>
+        <td class="param-default">0.5</td>
+        <td class="param-values"><span class="val-tag">[0.0, 1.0]</span></td>
+        <td class="param-desc">IoU threshold for NMS post-processing. Boxes with IoU above this value are suppressed. Lower = fewer overlapping boxes. Typical: 0.3–0.6. Applies to detector models only.</td>
+        <td class="param-scope"><span class="scope-badge scope-pgie">PGIE</span></td>
+      </tr>
+
+      <tr class="param-row cat-net" data-cat="net" data-scope="pgie" data-search="pre-cluster-threshold cluster raw detections filter">
+        <td class="param-name">pre-cluster-threshold</td>
+        <td class="param-type">float</td>
+        <td class="param-default">0.3</td>
+        <td class="param-values"><span class="val-tag">[0.0, 1.0]</span></td>
+        <td class="param-desc">Per-class confidence threshold applied before clustering/NMS. Filters raw detections before they enter the NMS pipeline. Set per-class via [class-attrs-all] or per-class groups.</td>
+        <td class="param-scope"><span class="scope-badge scope-pgie">PGIE</span></td>
+      </tr>
+
+      <tr class="param-row cat-net" data-cat="net" data-scope="pgie" data-search="cluster-mode dbscan nms grouprect clustering">
+        <td class="param-name">cluster-mode</td>
+        <td class="param-type">uint</td>
+        <td class="param-default">3</td>
+        <td class="param-values">
+          <span class="val-tag">0=OpenCV groupRect</span>
+          <span class="val-tag">1=DBSCAN</span>
+          <span class="val-tag">2=NMS</span>
+          <span class="val-tag">3=NMS+groupRects</span>
+          <span class="val-tag">4=none</span>
+        </td>
+        <td class="param-desc">Post-processing clustering algorithm for detector output. Mode 2 (NMS) is standard for YOLO models. Mode 4 (none) is used when the model includes built-in NMS (e.g. EfficientDet).</td>
+        <td class="param-scope"><span class="scope-badge scope-pgie">PGIE</span></td>
+      </tr>
+
+      <tr class="param-row cat-net" data-cat="net" data-scope="pgie" data-search="top-k topk maximum detections output limit">
+        <td class="param-name">topk</td>
+        <td class="param-type">int</td>
+        <td class="param-default">-1</td>
+        <td class="param-values"><span class="val-tag">-1=no limit</span><span class="val-tag">N=max N</span></td>
+        <td class="param-desc">Maximum number of objects to output per frame after NMS. -1 = unlimited. Setting a cap limits downstream metadata volume. Typical: 200–2000 for dense scenes.</td>
+        <td class="param-scope"><span class="scope-badge scope-pgie">PGIE</span></td>
+      </tr>
+
+      <tr class="param-row cat-net" data-cat="net" data-scope="both" data-search="classifier-async-mode async sync mode classifier">
+        <td class="param-name">classifier-async-mode<span class="imp-star">★</span></td>
+        <td class="param-type">bool</td>
+        <td class="param-default">0</td>
+        <td class="param-values"><span class="val-tag highlight">0=sync</span><span class="val-tag">1=async</span></td>
+        <td class="param-desc">
+          <strong>0=sync</strong>: SGIE results appear on the same frame as the detection that triggered them. Simpler to reason about in probes.
+          <strong>1=async</strong>: Results appear on a later frame (lag of 1 batch). Improves throughput but requires lag handling in probe code. Applies to classifiers only.
+        </td>
+        <td class="param-scope"><span class="scope-badge scope-sgie">SGIE</span></td>
+      </tr>
+
+      <tr class="param-row cat-net" data-cat="net" data-scope="both" data-search="segmentation-threshold segmentation mask output pixel">
+        <td class="param-name">segmentation-threshold</td>
+        <td class="param-type">float</td>
+        <td class="param-default">0.5</td>
+        <td class="param-values"><span class="val-tag">[0.0, 1.0]</span></td>
+        <td class="param-desc">For network-type=2 (segmentation). Pixel probability threshold — pixels below this value are assigned the background class. Applies only to segmentation models.</td>
+        <td class="param-scope"><span class="scope-badge scope-both">Both</span></td>
+      </tr>
+
+    </tbody>
+  </table>
+</div>
+
+<!-- ══════════════════════════════════════
+     SECTION 4: OUTPUT & TENSORS
+══════════════════════════════════════ -->
+<div class="config-section" id="output">
+  <div class="section-head">
+    <span class="section-num">04</span>
+    <span class="section-title">Output &amp; Tensor Control</span>
+    <span class="section-badge" style="color:var(--terra);border-color:var(--terra-dim);background:var(--terra-pale)">Output</span>
+  </div>
+  <p class="section-desc">
+    Controls what metadata nvinfer attaches to the buffer — whether to surface raw tensors
+    (for custom post-processing) or only decoded labels/bboxes.
+  </p>
+
+  <table class="param-table" id="table-output">
+    <thead>
+      <tr>
+        <th style="width:220px">Parameter</th>
+        <th style="width:80px">Type</th>
+        <th style="width:100px">Default</th>
+        <th style="width:160px">Values</th>
+        <th>Description</th>
+        <th style="width:100px">Applies To</th>
+      </tr>
+    </thead>
+    <tbody>
+
+      <tr class="param-row important cat-output" data-cat="output" data-scope="both" data-search="output-tensor-meta tensor raw softmax ctypes probe meta">
+        <td class="param-name">output-tensor-meta<span class="imp-star">★</span></td>
+        <td class="param-type">bool</td>
+        <td class="param-default">0</td>
+        <td class="param-values"><span class="val-tag">0=label mode</span><span class="val-tag highlight">1=tensor mode</span></td>
+        <td class="param-desc">
+          <strong>0</strong>: nvinfer runs argmax internally and attaches NvDsClassifierMeta (label + top-1 prob only).
+          <strong>1</strong>: nvinfer attaches NvDsInferTensorMeta containing the raw output tensor buffer. You get the full softmax vector. Mutually exclusive — enabling 1 disables NvDsClassifierMeta attachment.
+        </td>
+        <td class="param-scope"><span class="scope-badge scope-both">Both</span></td>
+      </tr>
+
+      <tr class="param-row cat-output" data-cat="output" data-scope="pgie" data-search="output-bbox-buffer raw bbox detector output tensor">
+        <td class="param-name">output-instance-mask</td>
+        <td class="param-type">bool</td>
+        <td class="param-default">0</td>
+        <td class="param-values"><span class="val-tag">0</span><span class="val-tag">1</span></td>
+        <td class="param-desc">For network-type=3 (instance segmentation). When 1, attaches per-object mask tensors to NvDsObjectMeta. Requires significant memory bandwidth per object.</td>
+        <td class="param-scope"><span class="scope-badge scope-pgie">PGIE</span></td>
+      </tr>
+
+      <tr class="param-row cat-output" data-cat="output" data-scope="both" data-search="layer-name-for-output output layer name tensor">
+        <td class="param-name">output-blob-names</td>
+        <td class="param-type">string</td>
+        <td class="param-default no-default">all outputs</td>
+        <td class="param-values"><span class="val-tag">name1;name2</span></td>
+        <td class="param-desc">Semicolon-separated names of output layer blobs to expose when output-tensor-meta=1. Use to select specific output heads from a multi-output model. Leave empty to expose all.</td>
+        <td class="param-scope"><span class="scope-badge scope-both">Both</span></td>
+      </tr>
+
+      <tr class="param-row cat-output" data-cat="output" data-scope="both" data-search="secondary-reinfer-interval reinfer update interval sgie classifier">
+        <td class="param-name">secondary-reinfer-interval</td>
+        <td class="param-type">uint</td>
+        <td class="param-default">0</td>
+        <td class="param-values"><span class="val-tag">0=every frame</span><span class="val-tag">N=every Nth</span></td>
+        <td class="param-desc">SGIE only. Re-run inference on an object every N frames even if the result is cached. 0 = re-infer every frame. Higher values reduce GPU load for slowly-changing attributes like color.</td>
+        <td class="param-scope"><span class="scope-badge scope-sgie">SGIE</span></td>
+      </tr>
+
+    </tbody>
+  </table>
+</div>
+
+<!-- ══════════════════════════════════════
+     SECTION 5: SGIE CHAINING
+══════════════════════════════════════ -->
+<div class="config-section" id="sgie-chain">
+  <div class="section-head">
+    <span class="section-num">05</span>
+    <span class="section-title">SGIE Chaining</span>
+    <span class="section-badge" style="color:var(--plum);border-color:#9060c0;background:var(--plum-pale)">SGIE Only</span>
+  </div>
+  <p class="section-desc">
+    These parameters only apply to SGIEs (process-mode=2). They define which upstream GIE's objects
+    this SGIE should process, which classes to run on, and how to filter by bbox size.
+  </p>
+
+  <table class="param-table" id="table-sgie">
+    <thead>
+      <tr>
+        <th style="width:220px">Parameter</th>
+        <th style="width:80px">Type</th>
+        <th style="width:100px">Default</th>
+        <th style="width:160px">Values</th>
+        <th>Description</th>
+        <th style="width:100px">Applies To</th>
+      </tr>
+    </thead>
+    <tbody>
+
+      <tr class="param-row important cat-sgie" data-cat="sgie" data-scope="sgie" data-search="operate-on-gie-id upstream gie id source objects">
+        <td class="param-name">operate-on-gie-id<span class="imp-star">★</span></td>
+        <td class="param-type">uint</td>
+        <td class="param-default no-default">required</td>
+        <td class="param-values"><span class="val-tag">1</span><span class="val-tag">2</span><span class="val-tag">N</span></td>
+        <td class="param-desc">gie-unique-id of the upstream GIE whose objects this SGIE should process. For a vehicle color classifier: set to the PGIE's gie-unique-id (usually 1). For LP char classifier chained after LP detector: set to LP detector's id.</td>
+        <td class="param-scope"><span class="scope-badge scope-sgie">SGIE</span></td>
+      </tr>
+
+      <tr class="param-row important cat-sgie" data-cat="sgie" data-scope="sgie" data-search="operate-on-class-ids class ids filter vehicle person which classes">
+        <td class="param-name">operate-on-class-ids<span class="imp-star">★</span></td>
+        <td class="param-type">string</td>
+        <td class="param-default">all classes</td>
+        <td class="param-values"><span class="val-tag">0</span><span class="val-tag">0;1;2</span></td>
+        <td class="param-desc">Semicolon-separated list of class IDs from the upstream GIE to run inference on. Empty = all classes. Set to "0" to only classify vehicles (class 0) and skip pedestrians/bikes. Reduces SGIE compute significantly.</td>
+        <td class="param-scope"><span class="scope-badge scope-sgie">SGIE</span></td>
+      </tr>
+
+    </tbody>
+  </table>
+</div>
+
+<!-- ══════════════════════════════════════
+     SECTION 6: PERFORMANCE & TENSORRT
+══════════════════════════════════════ -->
+<div class="config-section" id="perf">
+  <div class="section-head">
+    <span class="section-num">06</span>
+    <span class="section-title">Performance &amp; TensorRT</span>
+    <span class="section-badge" style="color:var(--cat-perf);border-color:#286050;background:#d8f0e8">Performance</span>
+  </div>
+  <p class="section-desc">
+    TensorRT engine build options, precision, batch size, and workspace memory. Engine build options
+    are used only during the initial build phase — they don't affect a pre-built cached engine.
+  </p>
+
+  <table class="param-table" id="table-perf">
+    <thead>
+      <tr>
+        <th style="width:220px">Parameter</th>
+        <th style="width:80px">Type</th>
+        <th style="width:100px">Default</th>
+        <th style="width:160px">Values</th>
+        <th>Description</th>
+        <th style="width:100px">Applies To</th>
+      </tr>
+    </thead>
+    <tbody>
+
+      <tr class="param-row important cat-perf" data-cat="perf" data-scope="both" data-search="batch-size batch inference size throughput">
+        <td class="param-name">batch-size<span class="imp-star">★</span></td>
+        <td class="param-type">uint</td>
+        <td class="param-default">1</td>
+        <td class="param-values"><span class="val-tag">1–N</span></td>
+        <td class="param-desc">Maximum number of frames (PGIE) or object crops (SGIE) processed in a single TRT inference call. Higher batch sizes improve GPU utilization but increase latency. For SGIE with many objects per frame, set to 16–64.</td>
+        <td class="param-scope"><span class="scope-badge scope-both">Both</span></td>
+      </tr>
+
+      <tr class="param-row cat-perf" data-cat="perf" data-scope="both" data-search="workspace-size workspace memory trt build">
+        <td class="param-name">workspace-size</td>
+        <td class="param-type">uint (MB)</td>
+        <td class="param-default">1024</td>
+        <td class="param-values"><span class="val-tag">MB</span></td>
+        <td class="param-desc">Maximum GPU memory (MB) allocated as TensorRT workspace during engine build. Larger workspace allows TRT to find faster kernel implementations. 512–4096 MB typical. Does not affect inference memory.</td>
+        <td class="param-scope"><span class="scope-badge scope-both">Both</span></td>
+      </tr>
+
+      <tr class="param-row cat-perf" data-cat="perf" data-scope="both" data-search="enable-dla dla deep learning accelerator jetson">
+        <td class="param-name">enable-dla</td>
+        <td class="param-type">bool</td>
+        <td class="param-default">0</td>
+        <td class="param-values"><span class="val-tag">0</span><span class="val-tag">1</span></td>
+        <td class="param-desc">Enable NVIDIA DLA (Deep Learning Accelerator) for Jetson AGX Orin. DLA is separate from GPU — runs independently. Frees GPU for other tasks. Only available on Jetson platforms with DLA hardware.</td>
+        <td class="param-scope"><span class="scope-badge scope-both">Both</span></td>
+      </tr>
+
+      <tr class="param-row cat-perf" data-cat="perf" data-scope="both" data-search="use-dla-core dla core 0 1 deep learning accelerator">
+        <td class="param-name">use-dla-core</td>
+        <td class="param-type">uint</td>
+        <td class="param-default">0</td>
+        <td class="param-values"><span class="val-tag">0</span><span class="val-tag">1</span></td>
+        <td class="param-desc">Select which DLA core to use (0 or 1). Jetson AGX Orin has 2 DLA cores. Requires enable-dla=1.</td>
+        <td class="param-scope"><span class="scope-badge scope-both">Both</span></td>
+      </tr>
+
+      <tr class="param-row important cat-perf" data-cat="perf" data-scope="both" data-search="int8 fp16 fp32 precision quantization">
+        <td class="param-name">int8-calib-file</td>
+        <td class="param-type">string</td>
+        <td class="param-default no-default">—</td>
+        <td class="param-values"><span class="val-tag">path/to/calib.bin</span></td>
+        <td class="param-desc">Path to INT8 calibration cache file. When provided, TRT builds an INT8 engine. INT8 is ~2× faster than FP16 but requires calibration data. Use trtexec to generate the calibration file separately.</td>
+        <td class="param-scope"><span class="scope-badge scope-both">Both</span></td>
+      </tr>
+
+      <tr class="param-row cat-perf" data-cat="perf" data-scope="both" data-search="int8 enable quantization precision int8-calib">
+        <td class="param-name">enable-int8</td>
+        <td class="param-type">bool</td>
+        <td class="param-default">0</td>
+        <td class="param-values"><span class="val-tag">0</span><span class="val-tag">1</span></td>
+        <td class="param-desc">Enable INT8 precision for TRT engine build. Requires int8-calib-file or a custom calibrator. Fastest precision mode but requires careful calibration to avoid accuracy degradation.</td>
+        <td class="param-scope"><span class="scope-badge scope-both">Both</span></td>
+      </tr>
+
+      <tr class="param-row cat-perf" data-cat="perf" data-scope="both" data-search="enable-fp16 fp16 half precision tensorrt">
+        <td class="param-name">enable-fp16</td>
+        <td class="param-type">bool</td>
+        <td class="param-default">0</td>
+        <td class="param-values"><span class="val-tag">0</span><span class="val-tag">1</span></td>
+        <td class="param-desc">Enable FP16 precision for TRT engine build. ~2× faster than FP32 on Ampere/Ada GPUs with minimal accuracy loss. Recommended default for production deployment. L40S supports FP16.</td>
+        <td class="param-scope"><span class="scope-badge scope-both">Both</span></td>
+      </tr>
+
+      <tr class="param-row cat-perf" data-cat="perf" data-scope="both" data-search="force-implicit-batch-dim batch dynamic implicit">
+        <td class="param-name">force-implicit-batch-dim</td>
+        <td class="param-type">bool</td>
+        <td class="param-default">0</td>
+        <td class="param-values"><span class="val-tag">0</span><span class="val-tag">1</span></td>
+        <td class="param-desc">Force TRT to use implicit batch dimension mode (legacy TRT API). 0 = explicit batch (modern, supports dynamic shapes). Leave at 0 for ONNX models exported with dynamic=True.</td>
+        <td class="param-scope"><span class="scope-badge scope-both">Both</span></td>
+      </tr>
+
+      <tr class="param-row cat-perf" data-cat="perf" data-scope="both" data-search="nvbuf-memory-type memory type cuda zero-copy">
+        <td class="param-name">nvbuf-memory-type</td>
+        <td class="param-type">uint</td>
+        <td class="param-default">0</td>
+        <td class="param-values">
+          <span class="val-tag highlight">0=default</span>
+          <span class="val-tag">1=cuda pinned</span>
+          <span class="val-tag">2=cuda device</span>
+          <span class="val-tag">3=surface array</span>
+        </td>
+        <td class="param-desc">Memory type for NvBufSurface allocation. 0 = platform default. 1 = CUDA pinned (faster host-device transfers). 2 = CUDA device memory. 3 = CUDA surface arrays. Usually leave at 0 unless profiling memory bottlenecks.</td>
+        <td class="param-scope"><span class="scope-badge scope-both">Both</span></td>
+      </tr>
+
+      <tr class="param-row cat-perf" data-cat="perf" data-scope="both" data-search="async-mode queue threading asynchronous">
+        <td class="param-name">async-mode</td>
+        <td class="param-type">bool</td>
+        <td class="param-default">1</td>
+        <td class="param-values"><span class="val-tag">0=sync</span><span class="val-tag highlight">1=async</span></td>
+        <td class="param-desc">Whether nvinfer performs inference asynchronously with a dedicated thread. 1 (default) maximizes pipeline throughput. 0 = synchronous (simpler debugging). Distinct from classifier-async-mode.</td>
+        <td class="param-scope"><span class="scope-badge scope-both">Both</span></td>
+      </tr>
+
+      <tr class="param-row cat-perf" data-cat="perf" data-scope="both" data-search="output-tensor-meta memory host device gpu">
+        <td class="param-name">infer-raw-output-dir</td>
+        <td class="param-type">string</td>
+        <td class="param-default no-default">—</td>
+        <td class="param-values"><span class="val-tag">path/to/dir/</span></td>
+        <td class="param-desc">Debug: directory path to dump raw inference output tensors to disk as binary files. Each frame produces one file per output layer. Useful for debugging output-tensor-meta extraction issues.</td>
+        <td class="param-scope"><span class="scope-badge scope-both">Both</span></td>
+      </tr>
+
+    </tbody>
+  </table>
+</div>
+
+<!-- ══════════════════════════════════════
+     SECTION 7: CUSTOM PARSERS & LIBS
+══════════════════════════════════════ -->
+<div class="config-section" id="custom">
+  <div class="section-head">
+    <span class="section-num">07</span>
+    <span class="section-title">Custom Parsers &amp; Libraries</span>
+    <span class="section-badge" style="color:var(--cat-custom);border-color:#604030;background:#f5e4e0">Custom</span>
+  </div>
+  <p class="section-desc">
+    For non-standard model output formats (e.g. custom YOLO variants, specialized detectors)
+    nvinfer supports shared library plugins for custom bbox decoding and network post-processing.
+  </p>
+
+  <table class="param-table" id="table-custom">
+    <thead>
+      <tr>
+        <th style="width:220px">Parameter</th>
+        <th style="width:80px">Type</th>
+        <th style="width:100px">Default</th>
+        <th style="width:160px">Values</th>
+        <th>Description</th>
+        <th style="width:100px">Applies To</th>
+      </tr>
+    </thead>
+    <tbody>
+
+      <tr class="param-row cat-custom" data-cat="custom" data-scope="both" data-search="parse-bbox-func-name bbox parser function custom yolo">
+        <td class="param-name">parse-bbox-func-name</td>
+        <td class="param-type">string</td>
+        <td class="param-default no-default">—</td>
+        <td class="param-values"><span class="val-tag">NvDsInferParseCustomYolo</span></td>
+        <td class="param-desc">Name of the C function in custom-lib-path to call for bbox decoding. The function must match the NvDsInferParseCustomFunc signature. Required for YOLO and any model not using standard SSD/UFF output format.</td>
+        <td class="param-scope"><span class="scope-badge scope-pgie">PGIE</span></td>
+      </tr>
+
+      <tr class="param-row cat-custom" data-cat="custom" data-scope="both" data-search="custom-lib-path library so shared plugin parser">
+        <td class="param-name">custom-lib-path</td>
+        <td class="param-type">string</td>
+        <td class="param-default no-default">—</td>
+        <td class="param-values"><span class="val-tag">libcustom.so</span></td>
+        <td class="param-desc">Path to a shared library (.so) containing custom parsing functions. Used together with parse-bbox-func-name, parse-classifier-func-name, or engine-create-func-name.</td>
+        <td class="param-scope"><span class="scope-badge scope-both">Both</span></td>
+      </tr>
+
+      <tr class="param-row cat-custom" data-cat="custom" data-scope="both" data-search="parse-classifier-func-name classifier function custom parser">
+        <td class="param-name">parse-classifier-func-name</td>
+        <td class="param-type">string</td>
+        <td class="param-default no-default">—</td>
+        <td class="param-desc">Name of the C function for custom classifier output decoding. Overrides nvinfer's built-in argmax. Use when your classifier output needs custom softmax, multi-label, or multi-head decode logic.</td>
+        <td class="param-scope"><span class="scope-badge scope-both">Both</span></td>
+      </tr>
+
+      <tr class="param-row cat-custom" data-cat="custom" data-scope="both" data-search="engine-create-func-name engine custom build create">
+        <td class="param-name">engine-create-func-name</td>
+        <td class="param-type">string</td>
+        <td class="param-default no-default">—</td>
+        <td class="param-values"><span class="val-tag">NvDsInferEngineCreateCustomFunc</span></td>
+        <td class="param-desc">Name of a custom function (in custom-lib-path) to build the TRT engine. Used when standard ONNX/Caffe parsing is insufficient — e.g. for models requiring custom TRT plugins or layers.</td>
+        <td class="param-scope"><span class="scope-badge scope-both">Both</span></td>
+      </tr>
+
+      <tr class="param-row cat-custom" data-cat="custom" data-scope="both" data-search="network-mode network type uff caffe custom nvinfer">
+        <td class="param-name">network-mode</td>
+        <td class="param-type">uint</td>
+        <td class="param-default">2</td>
+        <td class="param-values">
+          <span class="val-tag">0=FP32</span>
+          <span class="val-tag">1=INT8</span>
+          <span class="val-tag highlight">2=FP16</span>
+        </td>
+        <td class="param-desc">Shorthand precision setting for the TRT engine. 0=FP32, 1=INT8 (requires calib file), 2=FP16. Equivalent to enabling enable-fp16=1 or enable-int8=1. network-mode=2 is the standard production setting.</td>
+        <td class="param-scope"><span class="scope-badge scope-both">Both</span></td>
+      </tr>
+
+      <tr class="param-row cat-custom" data-cat="custom" data-scope="pgie" data-search="scaling-compute-hw VIC GPU hardware scaler">
+        <td class="param-name">scaling-compute-hw</td>
+        <td class="param-type">uint</td>
+        <td class="param-default">0</td>
+        <td class="param-values"><span class="val-tag highlight">0=GPU</span><span class="val-tag">1=VIC</span></td>
+        <td class="param-desc">Hardware used for image scaling/preprocessing. 0=GPU (default, supports all formats). 1=VIC (Jetson video image composer, offloads GPU). VIC is only available on Jetson platforms.</td>
+        <td class="param-scope"><span class="scope-badge scope-both">Both</span></td>
+      </tr>
+
+      <tr class="param-row cat-custom" data-cat="custom" data-scope="both" data-search="scaling-filter interpolation bilinear nearest bicubic filter">
+        <td class="param-name">scaling-filter</td>
+        <td class="param-type">uint</td>
+        <td class="param-default">0</td>
+        <td class="param-values">
+          <span class="val-tag highlight">0=nearest</span>
+          <span class="val-tag">1=bilinear</span>
+          <span class="val-tag">2=bilinear+edge</span>
+          <span class="val-tag">3=bilinear+border</span>
+          <span class="val-tag">4=bilinear+constant</span>
+          <span class="val-tag">5=bicubic</span>
+          <span class="val-tag">6=bicubic+edge</span>
+        </td>
+        <td class="param-desc">Interpolation algorithm used when resizing input to infer-dims. 0=nearest (fastest). 1=bilinear (balanced). 5=bicubic (best quality, slower). For color classification, bilinear (1) is recommended.</td>
+        <td class="param-scope"><span class="scope-badge scope-both">Both</span></td>
+      </tr>
+
+    </tbody>
+  </table>
+</div>
+
+<!-- ══════════════════════════════════════
+     QUICK EXAMPLES
+══════════════════════════════════════ -->
+<div class="config-section" id="example-pgie">
+  <div class="section-head">
+    <span class="section-num">EX</span>
+    <span class="section-title">PGIE Example — Vehicle Detector</span>
+    <span class="section-badge" style="color:var(--terra);border-color:var(--terra-dim);background:var(--terra-pale)">Example</span>
+  </div>
+
+  <div class="ini-example">
+    <div class="ini-top"><span class="ini-fname">config_pgie_vehicle.txt</span><span class="ini-tag">PGIE · YOLOv8 Detector</span></div>
+    <div class="ini-body">
+<span class="ini-section">[property]</span>
+<span class="ini-hl">gie-unique-id</span>           = <span class="ini-val">1</span>                    <span class="ini-cm"># all SGIEs reference this</span>
+<span class="ini-hl">process-mode</span>            = <span class="ini-val">1</span>                    <span class="ini-cm"># 1 = PGIE (full frame)</span>
+<span class="ini-hl">network-type</span>            = <span class="ini-val">0</span>                    <span class="ini-cm"># 0 = detector</span>
+
+<span class="ini-cm"># Model</span>
+<span class="ini-hl">model-engine-file</span>       = <span class="ini-val">yolov8s_vehicle.engine</span>
+<span class="ini-key">labelfile-path</span>          = <span class="ini-val">vehicle_labels.txt</span>
+<span class="ini-key">gpu-id</span>                  = <span class="ini-val">0</span>
+
+<span class="ini-cm"># Preprocessing — YOLO uses simple /255 normalization</span>
+<span class="ini-hl">net-scale-factor</span>        = <span class="ini-val">0.0039215697906911373</span> <span class="ini-cm"># 1/255</span>
+<span class="ini-key">offsets</span>                 = <span class="ini-val">0;0;0</span>                 <span class="ini-cm"># no mean subtraction</span>
+<span class="ini-key">color-format</span>            = <span class="ini-val">0</span>                     <span class="ini-cm"># 0 = RGB</span>
+<span class="ini-key">infer-dims</span>              = <span class="ini-val">3;640;640</span>             <span class="ini-cm"># C;H;W</span>
+
+<span class="ini-cm"># Detection params</span>
+<span class="ini-key">num-detected-classes</span>    = <span class="ini-val">4</span>                     <span class="ini-cm"># vehicle, person, bike, truck</span>
+<span class="ini-key">cluster-mode</span>            = <span class="ini-val">2</span>                     <span class="ini-cm"># 2 = NMS (for YOLO)</span>
+<span class="ini-key">nms-iou-threshold</span>       = <span class="ini-val">0.45</span>
+<span class="ini-key">threshold</span>               = <span class="ini-val">0.25</span>
+
+<span class="ini-cm"># Custom YOLO parser (required for YOLOv8)</span>
+<span class="ini-key">parse-bbox-func-name</span>    = <span class="ini-val">NvDsInferParseCustomYoloV8</span>
+<span class="ini-key">custom-lib-path</span>         = <span class="ini-val">libnvdsinfer_custom_impl_Yolo.so</span>
+
+<span class="ini-cm"># TensorRT</span>
+<span class="ini-key">network-mode</span>            = <span class="ini-val">2</span>                     <span class="ini-cm"># 2 = FP16</span>
+<span class="ini-key">batch-size</span>              = <span class="ini-val">4</span>
+<span class="ini-key">workspace-size</span>          = <span class="ini-val">2048</span>
+
+<span class="ini-cm"># Output</span>
+<span class="ini-key">output-tensor-meta</span>      = <span class="ini-val">0</span>                     <span class="ini-cm"># standard NvDsObjectMeta</span>
+    </div>
+  </div>
+</div>
+
+<div class="config-section" id="example-sgie-cls">
+  <div class="section-head">
+    <span class="section-num">EX</span>
+    <span class="section-title">SGIE Example — Color Classifier (tensor mode)</span>
+    <span class="section-badge" style="color:var(--plum);border-color:#9060c0;background:var(--plum-pale)">Example</span>
+  </div>
+
+  <div class="ini-example">
+    <div class="ini-top"><span class="ini-fname">config_sgie_color.txt</span><span class="ini-tag">SGIE · 15-class classifier · tensor mode</span></div>
+    <div class="ini-body">
+<span class="ini-section">[property]</span>
+<span class="ini-hl">gie-unique-id</span>           = <span class="ini-val">2</span>
+<span class="ini-hl">process-mode</span>            = <span class="ini-val">2</span>                    <span class="ini-cm"># 2 = SGIE (object crops)</span>
+<span class="ini-hl">network-type</span>            = <span class="ini-val">1</span>                    <span class="ini-cm"># 1 = classifier</span>
+
+<span class="ini-cm"># SGIE chain</span>
+<span class="ini-hl">operate-on-gie-id</span>       = <span class="ini-val">1</span>                    <span class="ini-cm"># process PGIE objects</span>
+<span class="ini-hl">operate-on-class-ids</span>    = <span class="ini-val">0</span>                    <span class="ini-cm"># vehicles only (class 0)</span>
+
+<span class="ini-cm"># Model</span>
+<span class="ini-key">model-engine-file</span>       = <span class="ini-val">color_classifier.engine</span>
+<span class="ini-key">labelfile-path</span>          = <span class="ini-val">color_labels.txt</span>
+<span class="ini-key">gpu-id</span>                  = <span class="ini-val">0</span>
+
+<span class="ini-cm"># Preprocessing — ImageNet normalization (must match training)</span>
+<span class="ini-hl">net-scale-factor</span>        = <span class="ini-val">0.0039215697906911373</span>
+<span class="ini-hl">offsets</span>                 = <span class="ini-val">123.675;116.280;103.530</span> <span class="ini-cm"># ImageNet mean×255</span>
+<span class="ini-key">color-format</span>            = <span class="ini-val">0</span>                    <span class="ini-cm"># RGB</span>
+<span class="ini-key">infer-dims</span>              = <span class="ini-val">3;224;224</span>
+
+<span class="ini-cm"># Quality gate — skip tiny/distant vehicles</span>
+<span class="ini-key">input-object-min-width</span>  = <span class="ini-val">64</span>
+<span class="ini-key">input-object-min-height</span> = <span class="ini-val">64</span>
+
+<span class="ini-cm"># Classifier config</span>
+<span class="ini-key">num-detected-classes</span>    = <span class="ini-val">15</span>
+<span class="ini-key">classifier-threshold</span>    = <span class="ini-val">0.2</span>
+<span class="ini-hl">classifier-async-mode</span>   = <span class="ini-val">0</span>                    <span class="ini-cm"># sync: results in same frame</span>
+
+<span class="ini-cm"># Raw tensor output — full softmax[15] for custom stabilization</span>
+<span class="ini-hl">output-tensor-meta</span>      = <span class="ini-val">1</span>                    <span class="ini-cm"># disables NvDsClassifierMeta</span>
+
+<span class="ini-key">network-mode</span>            = <span class="ini-val">2</span>                    <span class="ini-cm"># FP16</span>
+<span class="ini-key">batch-size</span>              = <span class="ini-val">16</span>
+    </div>
+  </div>
+</div>
+
+<div class="config-section" id="example-sgie-det">
+  <div class="section-head">
+    <span class="section-num">EX</span>
+    <span class="section-title">SGIE Example — License Plate Detector + Char Classifier Chain</span>
+    <span class="section-badge" style="color:var(--terra);border-color:var(--terra-dim);background:var(--terra-pale)">Example</span>
+  </div>
+
+  <div class="ini-example">
+    <div class="ini-top"><span class="ini-fname">config_sgie_lp_detector.txt</span><span class="ini-tag">SGIE-3 · LP Detector</span></div>
+    <div class="ini-body">
+<span class="ini-section">[property]</span>
+<span class="ini-hl">gie-unique-id</span>           = <span class="ini-val">3</span>
+<span class="ini-hl">process-mode</span>            = <span class="ini-val">2</span>
+<span class="ini-hl">network-type</span>            = <span class="ini-val">0</span>                    <span class="ini-cm"># 0 = detector (finds LP bbox)</span>
+<span class="ini-hl">operate-on-gie-id</span>       = <span class="ini-val">1</span>                    <span class="ini-cm"># run on PGIE vehicle objects</span>
+<span class="ini-key">operate-on-class-ids</span>    = <span class="ini-val">0</span>
+
+<span class="ini-key">model-engine-file</span>       = <span class="ini-val">lp_detector.engine</span>
+<span class="ini-key">gpu-id</span>                  = <span class="ini-val">0</span>
+<span class="ini-key">net-scale-factor</span>        = <span class="ini-val">0.0039215697906911373</span>
+<span class="ini-key">infer-dims</span>              = <span class="ini-val">3;640;640</span>
+<span class="ini-key">num-detected-classes</span>    = <span class="ini-val">1</span>                    <span class="ini-cm"># plate only</span>
+<span class="ini-key">threshold</span>               = <span class="ini-val">0.50</span>
+<span class="ini-key">cluster-mode</span>            = <span class="ini-val">2</span>
+<span class="ini-key">nms-iou-threshold</span>       = <span class="ini-val">0.40</span>
+<span class="ini-key">input-object-min-width</span>  = <span class="ini-val">80</span>
+<span class="ini-hl">output-tensor-meta</span>      = <span class="ini-val">1</span>
+<span class="ini-key">network-mode</span>            = <span class="ini-val">2</span>
+<span class="ini-key">batch-size</span>              = <span class="ini-val">8</span>
+    </div>
+  </div>
+
+  <div class="ini-example" style="margin-top:14px">
+    <div class="ini-top"><span class="ini-fname">config_sgie_lp_classifier.txt</span><span class="ini-tag">SGIE-4 · LP Character Classifier</span></div>
+    <div class="ini-body">
+<span class="ini-section">[property]</span>
+<span class="ini-hl">gie-unique-id</span>           = <span class="ini-val">4</span>
+<span class="ini-hl">process-mode</span>            = <span class="ini-val">2</span>
+<span class="ini-hl">network-type</span>            = <span class="ini-val">1</span>                    <span class="ini-cm"># 1 = classifier</span>
+<span class="ini-hl">operate-on-gie-id</span>       = <span class="ini-val">3</span>                    <span class="ini-cm"># operate on LP detector objects!</span>
+<span class="ini-key">operate-on-class-ids</span>    = <span class="ini-val">0</span>                    <span class="ini-cm"># plate class</span>
+
+<span class="ini-key">model-engine-file</span>       = <span class="ini-val">lp_char_classifier.engine</span>
+<span class="ini-key">labelfile-path</span>          = <span class="ini-val">char_labels.txt</span>      <span class="ini-cm"># 0-9 A-Z = 36 classes</span>
+<span class="ini-key">gpu-id</span>                  = <span class="ini-val">0</span>
+<span class="ini-key">net-scale-factor</span>        = <span class="ini-val">0.0039215697906911373</span>
+<span class="ini-key">color-format</span>            = <span class="ini-val">2</span>                    <span class="ini-cm"># GRAY — LP images are grayscale</span>
+<span class="ini-key">infer-dims</span>              = <span class="ini-val">1;32;128</span>             <span class="ini-cm"># C;H;W for LP crop</span>
+<span class="ini-key">num-detected-classes</span>    = <span class="ini-val">36</span>
+<span class="ini-key">classifier-threshold</span>    = <span class="ini-val">0.30</span>
+<span class="ini-hl">classifier-async-mode</span>   = <span class="ini-val">0</span>
+<span class="ini-hl">output-tensor-meta</span>      = <span class="ini-val">0</span>                    <span class="ini-cm"># label mode → NvDsClassifierMeta</span>
+<span class="ini-key">input-object-min-width</span>  = <span class="ini-val">20</span>
+<span class="ini-key">network-mode</span>            = <span class="ini-val">2</span>
+<span class="ini-key">batch-size</span>              = <span class="ini-val">32</span>                   <span class="ini-cm"># many LP crops per batch</span>
+    </div>
+  </div>
+
+  <div class="callout tip">
+    <span class="callout-title">Chain Rule</span>
+    SGIE-4 uses <code>operate-on-gie-id=3</code> — it operates on the LP bboxes found by SGIE-3,
+    <strong>not</strong> on the vehicle bboxes from the PGIE. This is how multi-stage SGIE chains work:
+    each SGIE can operate on any upstream GIE's output objects.
+  </div>
+</div>
+
+</main>
+</div>
+
+<footer>
+  <div class="footer-left">
+    DeepStream 8 · nvinfer PGIE / SGIE Config Reference<br>
+    [property] group · All parameters · process-mode 1 &amp; 2
+  </div>
+  <div class="footer-right">
+    <span class="fbadge">nvinfer</span>
+    <span class="fbadge">TensorRT</span>
+    <span class="fbadge">ONNX</span>
+    <span class="fbadge">GStreamer</span>
+    <span class="fbadge">DeepStream 8</span>
+  </div>
+</footer>
+
+<script>
+// ── Filter State ────────────────────────────────────────────────
+let currentScope = 'all';
+let currentCat   = 'all';
+let currentSearch = '';
+
+function applyFilters() {
+  currentSearch = document.getElementById('searchInput').value.toLowerCase().trim();
+  const rows = document.querySelectorAll('.param-row');
+  let visible = 0;
+
+  rows.forEach(row => {
+    const rowScope  = row.dataset.scope  || 'both';
+    const rowCat    = row.dataset.cat    || '';
+    const rowSearch = (row.dataset.search || '') + ' ' +
+                      (row.querySelector('.param-name')?.textContent || '') + ' ' +
+                      (row.querySelector('.param-desc')?.textContent || '');
+
+    const scopeMatch = currentScope === 'all' ||
+      (currentScope === 'both' && rowScope === 'both') ||
+      (currentScope === 'pgie' && (rowScope === 'pgie' || rowScope === 'both')) ||
+      (currentScope === 'sgie' && (rowScope === 'sgie' || rowScope === 'both'));
+
+    const catMatch = currentCat === 'all' || rowCat === currentCat;
+    const searchMatch = !currentSearch || rowSearch.toLowerCase().includes(currentSearch);
+
+    const show = scopeMatch && catMatch && searchMatch;
+    row.classList.toggle('hidden', !show);
+    if (show) visible++;
+  });
+
+  document.getElementById('resultsCount').textContent =
+    visible === rows.length ? `${visible} parameters` : `${visible} / ${rows.length} parameters`;
+
+  const allHidden = [...document.querySelectorAll('.config-section')].every(sec => {
+    const rows = sec.querySelectorAll('.param-row:not(.hidden)');
+    return rows.length === 0;
+  });
+  document.getElementById('emptyState').style.display = allHidden ? 'block' : 'none';
+}
+
+function setScope(scope, btn) {
+  currentScope = scope;
+  document.querySelectorAll('[data-scope-btn], .fbtn[data-scope]').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  applyFilters();
+}
+
+function setCat(cat, btn) {
+  currentCat = cat;
+  document.querySelectorAll('.fbtn[data-cat]').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  applyFilters();
+}
+
+// Count total params
+window.addEventListener('DOMContentLoaded', () => {
+  const total = document.querySelectorAll('.param-row').length;
+  document.getElementById('totalCount').textContent = total;
+  document.getElementById('resultsCount').textContent = `${total} parameters`;
+});
+</script>
+
+</body>
+</html>

@@ -1,0 +1,1981 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DeepStream · Best Frame Selection</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne+Mono&family=Syne:wght@400;600;800&family=DM+Mono:ital,wght@0,300;0,400;1,300&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #080c10;
+    --surface:   #0d1318;
+    --surface2:  #111820;
+    --border:    #1c2730;
+    --border2:   #243040;
+    --accent:    #00d4ff;
+    --accent2:   #ff6b35;
+    --accent3:   #7fff6b;
+    --muted:     #4a6070;
+    --text:      #c8dae8;
+    --text-dim:  #7a9aaa;
+    --heading:   #e8f4ff;
+    --tag-bg:    #0a1f2e;
+    --tag-border:#1a4060;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    font-size: 15px;
+    line-height: 1.7;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── SCANLINE OVERLAY ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,212,255,0.015) 2px,
+      rgba(0,212,255,0.015) 4px
+    );
+    pointer-events: none;
+    z-index: 1000;
+  }
+
+  /* ── LAYOUT ── */
+  .page-wrap {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 32px 80px;
+  }
+
+  /* ── HEADER ── */
+  header {
+    padding: 60px 0 48px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 56px;
+    position: relative;
+  }
+
+  .header-eyebrow {
+    font-family: 'Syne Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.25em;
+    color: var(--accent);
+    text-transform: uppercase;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .header-eyebrow::before {
+    content: '';
+    display: block;
+    width: 32px;
+    height: 1px;
+    background: var(--accent);
+  }
+
+  h1 {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: clamp(2rem, 5vw, 3.4rem);
+    color: var(--heading);
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+  }
+
+  h1 span {
+    color: var(--accent);
+  }
+
+  .header-sub {
+    margin-top: 16px;
+    font-size: 14px;
+    color: var(--text-dim);
+    font-family: 'DM Mono', monospace;
+    font-weight: 300;
+  }
+
+  .pipeline-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--tag-bg);
+    border: 1px solid var(--tag-border);
+    border-radius: 4px;
+    padding: 4px 10px;
+    font-family: 'Syne Mono', monospace;
+    font-size: 11px;
+    color: var(--accent);
+    margin-top: 20px;
+  }
+
+  .dot {
+    width: 6px; height: 6px;
+    background: var(--accent3);
+    border-radius: 50%;
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50%       { opacity: 0.4; transform: scale(0.7); }
+  }
+
+  /* ── SECTION TITLES ── */
+  .section {
+    margin-bottom: 56px;
+    animation: fadeUp 0.5s ease both;
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .section:nth-child(2) { animation-delay: 0.05s; }
+  .section:nth-child(3) { animation-delay: 0.10s; }
+  .section:nth-child(4) { animation-delay: 0.15s; }
+  .section:nth-child(5) { animation-delay: 0.20s; }
+  .section:nth-child(6) { animation-delay: 0.25s; }
+  .section:nth-child(7) { animation-delay: 0.30s; }
+
+  .section-label {
+    font-family: 'Syne Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+
+  h2 {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--heading);
+    letter-spacing: -0.01em;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  h2 .num {
+    font-family: 'Syne Mono', monospace;
+    font-size: 11px;
+    color: var(--accent);
+    background: rgba(0,212,255,0.08);
+    border: 1px solid rgba(0,212,255,0.2);
+    border-radius: 3px;
+    padding: 2px 8px;
+    font-weight: 400;
+  }
+
+  h3 {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--heading);
+    margin: 24px 0 10px;
+  }
+
+  p {
+    color: var(--text);
+    margin-bottom: 14px;
+    font-size: 14.5px;
+  }
+
+  /* ── PIPELINE FLOW ── */
+  .pipeline-flow {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px 24px;
+    margin-bottom: 24px;
+    overflow-x: auto;
+  }
+
+  .pipe-node {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    flex-shrink: 0;
+  }
+
+  .pipe-box {
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    border-radius: 5px;
+    padding: 6px 12px;
+    font-family: 'Syne Mono', monospace;
+    font-size: 11px;
+    color: var(--text);
+    white-space: nowrap;
+    transition: border-color 0.2s, color 0.2s;
+    cursor: default;
+  }
+
+  .pipe-box:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .pipe-box.highlight {
+    border-color: var(--accent2);
+    color: var(--accent2);
+  }
+
+  .pipe-arrow {
+    font-family: 'Syne Mono', monospace;
+    color: var(--muted);
+    padding: 0 6px;
+    font-size: 12px;
+  }
+
+  /* ── CODE BLOCKS ── */
+  .code-wrap {
+    position: relative;
+    margin: 16px 0 24px;
+  }
+
+  .code-label {
+    position: absolute;
+    top: -1px; right: 0;
+    font-family: 'Syne Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--muted);
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-bottom: none;
+    padding: 4px 10px;
+    border-radius: 4px 4px 0 0;
+  }
+
+  pre {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 20px 22px;
+    overflow-x: auto;
+    font-family: 'DM Mono', monospace;
+    font-size: 12.5px;
+    line-height: 1.75;
+    color: var(--text);
+    tab-size: 4;
+  }
+
+  /* syntax tokens */
+  .kw  { color: #7ba7ff; font-style: italic; }
+  .fn  { color: #ffcc66; }
+  .st  { color: #a8e86c; }
+  .cm  { color: #3d6070; font-style: italic; }
+  .nb  { color: #ff9966; }
+  .op  { color: var(--accent); }
+  .num { color: #ff9966; }
+
+  /* ── CALLOUT BOXES ── */
+  .callout {
+    border-left: 3px solid;
+    padding: 14px 18px;
+    border-radius: 0 6px 6px 0;
+    margin: 20px 0;
+    font-size: 13.5px;
+  }
+
+  .callout.info {
+    border-color: var(--accent);
+    background: rgba(0,212,255,0.06);
+    color: var(--text);
+  }
+
+  .callout.warn {
+    border-color: var(--accent2);
+    background: rgba(255,107,53,0.06);
+    color: var(--text);
+  }
+
+  .callout.tip {
+    border-color: var(--accent3);
+    background: rgba(127,255,107,0.05);
+    color: var(--text);
+  }
+
+  .callout-title {
+    font-family: 'Syne Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+
+  .callout.info  .callout-title { color: var(--accent); }
+  .callout.warn  .callout-title { color: var(--accent2); }
+  .callout.tip   .callout-title { color: var(--accent3); }
+
+  /* ── TABLE ── */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13.5px;
+    margin: 16px 0 24px;
+  }
+
+  th {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    padding: 10px 14px;
+    text-align: left;
+    font-family: 'Syne Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--accent);
+    font-weight: 400;
+  }
+
+  td {
+    border: 1px solid var(--border);
+    padding: 10px 14px;
+    color: var(--text);
+    vertical-align: top;
+  }
+
+  td:first-child {
+    font-family: 'Syne Mono', monospace;
+    font-size: 12px;
+    color: var(--heading);
+    white-space: nowrap;
+  }
+
+  tr:hover td {
+    background: rgba(255,255,255,0.015);
+  }
+
+  /* ── METADATA HIERARCHY ── */
+  .hierarchy {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px 24px;
+    font-family: 'DM Mono', monospace;
+    font-size: 12.5px;
+    line-height: 2;
+  }
+
+  .h-node {
+    display: block;
+    color: var(--text-dim);
+  }
+
+  .h-node .h-name { color: var(--heading); }
+  .h-node .h-type { color: var(--accent2); font-size: 11px; }
+  .h-node .h-field { color: var(--text-dim); font-size: 11px; margin-left: 4px; }
+
+  /* ── SCORE FORMULA ── */
+  .formula-box {
+    background: var(--surface);
+    border: 1px solid var(--accent);
+    border-radius: 8px;
+    padding: 22px 26px;
+    margin: 16px 0;
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+  }
+
+  .formula-title {
+    font-family: 'Syne Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 14px;
+  }
+
+  .formula-line {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+  }
+
+  .formula-var  { color: var(--heading); }
+  .formula-eq   { color: var(--muted); }
+  .formula-val  { color: var(--accent3); }
+  .formula-note { color: var(--muted); font-size: 11px; margin-left: 4px; }
+
+  /* ── TWO-COL ── */
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin: 16px 0;
+  }
+
+  @media (max-width: 680px) {
+    .two-col { grid-template-columns: 1fr; }
+    .pipeline-flow { flex-direction: column; align-items: flex-start; }
+    .pipe-arrow { transform: rotate(90deg); }
+  }
+
+  .mini-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 16px 18px;
+  }
+
+  .mini-card h4 {
+    font-family: 'Syne Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    color: var(--accent2);
+    margin-bottom: 10px;
+    text-transform: uppercase;
+  }
+
+  .mini-card p {
+    font-size: 13px;
+    color: var(--text-dim);
+    margin-bottom: 0;
+  }
+
+  /* ── DIVIDER ── */
+  hr {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 48px 0;
+  }
+
+  /* ── FOOTER ── */
+  footer {
+    border-top: 1px solid var(--border);
+    padding-top: 28px;
+    margin-top: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  footer span {
+    font-family: 'Syne Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+  }
+
+  .footer-stack {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .stack-badge {
+    background: var(--tag-bg);
+    border: 1px solid var(--tag-border);
+    border-radius: 3px;
+    padding: 3px 8px;
+    font-family: 'Syne Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+
+  /* ── ANCHOR LINKS ── */
+  .toc {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 48px;
+  }
+
+  .toc a {
+    font-family: 'Syne Mono', monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+    text-decoration: none;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 5px 12px;
+    transition: border-color 0.15s, color 0.15s;
+  }
+
+  .toc a:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  code {
+    font-family: 'Syne Mono', monospace;
+    font-size: 12px;
+    background: rgba(0,212,255,0.07);
+    border: 1px solid rgba(0,212,255,0.15);
+    border-radius: 3px;
+    padding: 1px 6px;
+    color: var(--accent);
+  }
+
+  ul {
+    padding-left: 20px;
+    color: var(--text);
+    font-size: 14px;
+    margin-bottom: 14px;
+  }
+
+  ul li {
+    margin-bottom: 6px;
+  }
+
+  ul li::marker {
+    color: var(--muted);
+  }
+
+</style>
+</head>
+<body>
+<div class="page-wrap">
+
+  <!-- ── HEADER ── -->
+  <header>
+    <div class="header-eyebrow">DeepStream 8 · Vehicle Intelligence Pipeline</div>
+    <h1>Best <span>Frame</span> Selection<br>per Tracked Object</h1>
+    <div class="header-sub">Top-3 frames · Top-2 crops · NvDCF past-frame flush · Quality scoring</div>
+    <div class="pipeline-tag">
+      <span class="dot"></span>
+      PGIE → NvDCF → NvDsOSD → Frame Buffer → Best-N Selection
+    </div>
+  </header>
+
+  <!-- ── TOC ── -->
+  <div class="toc">
+    <a href="#problem">Problem</a>
+    <a href="#tracking">Tracking</a>
+    <a href="#scoring">Score Function</a>
+    <a href="#probe">Live Probe</a>
+    <a href="#pastframe">Past Frame</a>
+    <a href="#flush">Flush & Select</a>
+    <a href="#summary">Summary Flow</a>
+    <a href="#notes">Practical Notes</a>
+    <a href="#nvbufsurface">NvBufSurface</a>
+    <a href="#pastframebatch">NvDsPastFrameObjBatch</a>
+    <a href="#jsonviewer">JSON Sample</a>
+    <a href="#termination">Track Termination</a>
+  </div>
+
+  <!-- ── SECTION 1: PROBLEM ── -->
+  <div class="section" id="problem">
+    <div class="section-label">Overview</div>
+    <h2><span class="num">01</span> The Core Problem</h2>
+    <p>
+      Your pipeline emits per-frame detections with bounding boxes, class labels, and confidence scores.
+      The goal is to collect all detections belonging to the same physical object and select the highest-quality
+      frames and crops from that collection.
+    </p>
+
+    <div class="two-col">
+      <div class="mini-card">
+        <h4>Top-3 Frames</h4>
+        <p>Best 3 full-frame snapshots per object — useful for review, audit trails, and multi-frame majority voting.</p>
+      </div>
+      <div class="mini-card">
+        <h4>Top-2 Crops</h4>
+        <p>Best 2 tight bbox crops per object — primary output for ReID gallery ingestion and classifier fine-tuning.</p>
+      </div>
+    </div>
+
+    <p>Three sub-problems must be solved in sequence:</p>
+    <ul>
+      <li><strong>Association</strong> — which detections belong to the same object across frames?</li>
+      <li><strong>Scoring</strong> — which of those frames are highest quality?</li>
+      <li><strong>Flushing</strong> — when do we know a track is complete and ready to process?</li>
+    </ul>
+  </div>
+
+  <!-- ── SECTION 2: TRACKING ── -->
+  <div class="section" id="tracking">
+    <div class="section-label">Prerequisites</div>
+    <h2><span class="num">02</span> Tracking Requirement</h2>
+    <p>
+      Without a tracker, detections have no persistent identity across frames.
+      NvDCF assigns each object a stable <code>object_id</code> — this is your grouping key.
+    </p>
+
+    <div class="pipeline-flow">
+      <div class="pipe-node"><div class="pipe-box">filesrc</div><div class="pipe-arrow">→</div></div>
+      <div class="pipe-node"><div class="pipe-box">qtdemux</div><div class="pipe-arrow">→</div></div>
+      <div class="pipe-node"><div class="pipe-box">h264parse</div><div class="pipe-arrow">→</div></div>
+      <div class="pipe-node"><div class="pipe-box">nvv4l2decoder</div><div class="pipe-arrow">→</div></div>
+      <div class="pipe-node"><div class="pipe-box">nvstreammux</div><div class="pipe-arrow">→</div></div>
+      <div class="pipe-node"><div class="pipe-box highlight">nvinfer (PGIE)</div><div class="pipe-arrow">→</div></div>
+      <div class="pipe-node"><div class="pipe-box highlight">nvtracker (NvDCF)</div><div class="pipe-arrow">→</div></div>
+      <div class="pipe-node"><div class="pipe-box">nvdsosd</div><div class="pipe-arrow">→</div></div>
+      <div class="pipe-node"><div class="pipe-box">output</div></div>
+    </div>
+
+    <div class="callout info">
+      <div class="callout-title">Key Metadata Field</div>
+      Each <code>NvDsObjectMeta</code> carries <code>object_id</code> (tracker-assigned, stable across frames)
+      and <code>confidence</code> (from PGIE). Both are available in the pad probe.
+    </div>
+
+    <h3>Multi-Stream Key</h3>
+    <p>
+      If you run multiple source streams in one pipeline, the same <code>object_id</code> value can appear in
+      different streams. Always key your accumulator on <code>(source_id, object_id)</code>:
+    </p>
+    <div class="code-wrap">
+      <div class="code-label">Python</div>
+      <pre><span class="cm"># Multi-stream safe keying</span>
+key = (frame_meta.source_id, obj_meta.object_id)
+object_frame_buffer[key].append(...)</pre>
+    </div>
+  </div>
+
+  <!-- ── SECTION 3: SCORING ── -->
+  <div class="section" id="scoring">
+    <div class="section-label">Quality Metric</div>
+    <h2><span class="num">03</span> Frame Quality Score</h2>
+    <p>
+      Raw detection confidence is a weak quality proxy on its own. A composite score across
+      multiple signals is significantly more reliable for selecting clean, well-cropped frames.
+    </p>
+
+    <div class="formula-box">
+      <div class="formula-title">Composite Score Formula</div>
+      <div class="formula-line">
+        <span class="formula-var">score</span>
+        <span class="formula-eq">=</span>
+        <span class="formula-val">conf × 0.5</span>
+        <span class="formula-note">// PGIE confidence (0–1)</span>
+      </div>
+      <div class="formula-line">
+        <span class="formula-var"></span>
+        <span class="formula-eq">+</span>
+        <span class="formula-val">size_score × 0.4</span>
+        <span class="formula-note">// bbox area / frame area, capped at 1.0</span>
+      </div>
+      <div class="formula-line">
+        <span class="formula-var"></span>
+        <span class="formula-eq">+</span>
+        <span class="formula-val">aspect_ok × 0.1</span>
+        <span class="formula-note">// 0.4 &lt; w/h &lt; 2.5 → 1, else 0</span>
+      </div>
+    </div>
+
+    <div class="code-wrap">
+      <div class="code-label">Python</div>
+      <pre><span class="kw">def</span> <span class="fn">frame_quality_score</span>(conf, rect, frame_meta):
+    w = rect.width
+    h = rect.height
+    area = w * h
+
+    <span class="cm"># Penalize extreme aspect ratios (occluded / edge-clipped vehicles)</span>
+    aspect_ok = <span class="nb">float</span>(<span class="num">0.4</span> &lt; (w / max(h, <span class="num">1</span>)) &lt; <span class="num">2.5</span>)
+
+    <span class="cm"># PGIE confidence</span>
+    conf_score = conf
+
+    <span class="cm"># Normalize bbox area to frame area</span>
+    frame_area = frame_meta.source_frame_width * frame_meta.source_frame_height
+    size_score = <span class="nb">min</span>(area / max(frame_area, <span class="num">1</span>), <span class="num">1.0</span>)
+
+    <span class="cm"># Optional: penalize objects near frame edges (likely truncated)</span>
+    cx = rect.left + w / <span class="num">2</span>
+    cy = rect.top  + h / <span class="num">2</span>
+    margin_x = cx / frame_meta.source_frame_width
+    margin_y = cy / frame_meta.source_frame_height
+    edge_ok = <span class="nb">float</span>(<span class="num">0.05</span> &lt; margin_x &lt; <span class="num">0.95</span> <span class="kw">and</span>
+                    <span class="num">0.05</span> &lt; margin_y &lt; <span class="num">0.95</span>)
+
+    score = (conf_score   * <span class="num">0.45</span> +
+             size_score   * <span class="num">0.35</span> +
+             aspect_ok    * <span class="num">0.10</span> +
+             edge_ok      * <span class="num">0.10</span>)
+    <span class="kw">return</span> score</pre>
+    </div>
+
+    <h3>Optional Additional Signals</h3>
+    <table>
+      <thead>
+        <tr><th>Signal</th><th>How to compute</th><th>What it proxies</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Tracker confidence</td>
+          <td><code>obj_meta.tracker_confidence</code></td>
+          <td>NvDCF match certainty for this frame</td>
+        </tr>
+        <tr>
+          <td>Motion blur proxy</td>
+          <td>IoU of bbox vs. same object previous frame</td>
+          <td>High IoU = stable = less motion blur</td>
+        </tr>
+        <tr>
+          <td>Occlusion proxy</td>
+          <td>Overlap with other bboxes in frame</td>
+          <td>Low overlap = unoccluded object</td>
+        </tr>
+        <tr>
+          <td>Laplacian variance</td>
+          <td>cv2.Laplacian on crop → variance</td>
+          <td>Direct sharpness estimate</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ── SECTION 4: PROBE ── -->
+  <div class="section" id="probe">
+    <div class="section-label">GStreamer Integration</div>
+    <h2><span class="num">04</span> Accumulation Probe</h2>
+    <p>
+      Attach a pad probe on the <strong>sink pad of nvdsosd</strong>. At this point PGIE and NvDCF metadata
+      are fully populated but OSD has not yet burned text into the frame — bbox geometry is still
+      accurate for cropping.
+    </p>
+
+    <div class="callout warn">
+      <div class="callout-title">Critical: Pixel Data Lifetime</div>
+      <code>NvBufSurface</code> pointers are only valid <em>inside</em> the probe callback.
+      You must copy crop pixel data before returning <code>Gst.PadProbeReturn.OK</code>.
+      Storing the frame metadata pointer and reading pixels later is a use-after-free bug.
+    </div>
+
+    <div class="code-wrap">
+      <div class="code-label">Python · buffer_probe</div>
+      <pre><span class="kw">import</span> pyds
+<span class="kw">import</span> numpy <span class="kw">as</span> np
+<span class="kw">import</span> cv2
+<span class="kw">from</span> collections <span class="kw">import</span> defaultdict
+
+object_frame_buffer = defaultdict(list)  <span class="cm"># (src_id, oid) → [entries]</span>
+last_seen            = {}                <span class="cm"># (src_id, oid) → frame_num</span>
+BUFFER_CAP           = <span class="num">50</span>              <span class="cm"># max frames stored per object</span>
+
+<span class="kw">def</span> <span class="fn">extract_crop</span>(gst_buffer, frame_meta, rect):
+    n_frame = pyds.get_nvds_buf_surface(
+        <span class="nb">hash</span>(gst_buffer), frame_meta.batch_id
+    )
+    frame_bgr = np.array(n_frame, copy=<span class="nb">True</span>)
+    fh, fw    = frame_bgr.shape[:<span class="num">2</span>]
+    x1 = <span class="nb">max</span>(<span class="num">0</span>,  <span class="nb">int</span>(rect.left))
+    y1 = <span class="nb">max</span>(<span class="num">0</span>,  <span class="nb">int</span>(rect.top))
+    x2 = <span class="nb">min</span>(fw, <span class="nb">int</span>(rect.left + rect.width))
+    y2 = <span class="nb">min</span>(fh, <span class="nb">int</span>(rect.top  + rect.height))
+    <span class="kw">return</span> frame_bgr[y1:y2, x1:x2]
+
+<span class="kw">def</span> <span class="fn">buffer_probe</span>(pad, info, u_data):
+    gst_buffer = info.get_buffer()
+    batch_meta = pyds.gst_buffer_get_nvds_batch_meta(<span class="nb">hash</span>(gst_buffer))
+
+    <span class="cm"># ── accumulate live detections ──</span>
+    l_frame = batch_meta.frame_meta_list
+    <span class="kw">while</span> l_frame:
+        frame_meta = pyds.NvDsFrameMeta.cast(l_frame.data)
+        src_id     = frame_meta.source_id
+        frame_num  = frame_meta.frame_num
+
+        l_obj = frame_meta.obj_meta_list
+        <span class="kw">while</span> l_obj:
+            obj_meta = pyds.NvDsObjectMeta.cast(l_obj.data)
+            key      = (src_id, obj_meta.object_id)
+            rect     = obj_meta.rect_params
+
+            score = frame_quality_score(
+                obj_meta.confidence, rect, frame_meta
+            )
+            crop  = extract_crop(gst_buffer, frame_meta, rect)
+
+            buf = object_frame_buffer[key]
+            buf.append({
+                <span class="st">"score"</span>:     score,
+                <span class="st">"frame_num"</span>: frame_num,
+                <span class="st">"bbox"</span>:      (rect.left, rect.top,
+                               rect.width, rect.height),
+                <span class="st">"crop"</span>:      <span class="cm">cv2.imencode('.jpg', crop)[1].tobytes()</span>,
+            })
+
+            <span class="cm"># Cap buffer — evict lowest-score entry</span>
+            <span class="kw">if</span> <span class="nb">len</span>(buf) > BUFFER_CAP:
+                buf.sort(key=<span class="kw">lambda</span> x: x[<span class="st">"score"</span>], reverse=<span class="nb">True</span>)
+                buf.pop()  <span class="cm"># remove worst</span>
+
+            last_seen[key] = frame_num
+            l_obj = l_obj.next
+        l_frame = l_frame.next
+
+    <span class="cm"># ── past frame flush (see Section 05) ──</span>
+    _flush_terminated_tracks(batch_meta, gst_buffer)
+
+    <span class="kw">return</span> Gst.PadProbeReturn.OK</pre>
+    </div>
+
+    <div class="code-wrap">
+      <div class="code-label">Python · probe attachment</div>
+      <pre><span class="cm"># Attach to nvdsosd sink pad — after NvDCF metadata is populated</span>
+osd_sink_pad = nvdsosd.get_static_pad(<span class="st">"sink"</span>)
+osd_sink_pad.add_probe(
+    Gst.PadProbeType.BUFFER,
+    buffer_probe,
+    <span class="num">0</span>
+)</pre>
+    </div>
+  </div>
+
+  <!-- ── SECTION 5: PAST FRAME ── -->
+  <div class="section" id="pastframe">
+    <div class="section-label">Track Termination Signal</div>
+    <h2><span class="num">05</span> NvDCF Past Frame Metadata</h2>
+    <p>
+      NvDCF does <strong>not</strong> fire a GStreamer event when a track ends. Instead, it writes terminated
+      track data into a <code>NvDsPastFrameObjBatch</code> structure attached to the same
+      <code>GstBuffer</code> — a parallel metadata path alongside the normal frame meta list.
+    </p>
+
+    <h3>Required Tracker Config</h3>
+    <div class="code-wrap">
+      <div class="code-label">config_tracker_NvDCF.yml</div>
+      <pre>NvDCF:
+  <span class="cm"># ... other params ...</span>
+  pastFrame: <span class="num">1</span>               <span class="cm"># must be enabled</span>
+  maxShadowTrackingAge: <span class="num">30</span>    <span class="cm"># frames in shadow before termination</span>
+  outputTerminatedTracks: <span class="num">1</span>  <span class="cm"># surfaces terminated data in batch</span></pre>
+    </div>
+
+    <div class="callout warn">
+      <div class="callout-title">Config Requirement</div>
+      Without <code>pastFrame: 1</code>, the <code>past_frame_obj_batch</code> pointer will be null
+      and no termination signals will be surfaced. The periodic timeout fallback (Section 06) will
+      still work, but you lose the authoritative flush signal.
+    </div>
+
+    <h3>Past Frame Metadata Hierarchy</h3>
+    <div class="hierarchy">
+      <span class="h-node">
+        <span class="h-name">NvDsPastFrameObjBatch</span>
+        <span class="h-type"> — one per GstBuffer batch</span>
+      </span>
+      <span class="h-node" style="padding-left:22px">
+        └── <span class="h-name">NvDsPastFrameObjStream</span>
+        <span class="h-field">streamID, numList</span>
+        <span class="h-type"> — one per source</span>
+      </span>
+      <span class="h-node" style="padding-left:44px">
+        └── <span class="h-name">NvDsPastFrameObjList</span>
+        <span class="h-field">uniqueId, numObj</span>
+        <span class="h-type"> — one per terminated track</span>
+      </span>
+      <span class="h-node" style="padding-left:66px">
+        └── <span class="h-name">NvDsPastFrameObj</span>
+        <span class="h-field">frameNum, tBbox, confidence, age</span>
+        <span class="h-type"> — one entry per frame</span>
+      </span>
+    </div>
+
+    <div class="callout info">
+      <div class="callout-title">Pixel Data Note</div>
+      Past frame metadata provides bbox geometry and confidence history — but <strong>not pixel data</strong>.
+      The GPU frame buffers those frames lived in are long gone. This is why crops must be extracted
+      live in the current-frame probe and stored in the accumulator buffer.
+    </div>
+
+    <div class="code-wrap">
+      <div class="code-label">Python · past frame traversal</div>
+      <pre><span class="kw">def</span> <span class="fn">_flush_terminated_tracks</span>(batch_meta, gst_buffer):
+    past_batch = pyds.nvds_get_pastframe_obj_batch(
+        batch_meta.past_frame_obj_batch
+    )
+    <span class="kw">if</span> past_batch <span class="kw">is</span> <span class="nb">None</span>:
+        <span class="kw">return</span>
+
+    l_stream = past_batch.list
+    <span class="kw">while</span> l_stream:
+        stream = pyds.NvDsPastFrameObjStream.cast(l_stream.data)
+        src_id = stream.streamID
+
+        l_track = stream.list
+        <span class="kw">while</span> l_track:
+            track = pyds.NvDsPastFrameObjList.cast(l_track.data)
+            oid   = track.uniqueId
+            key   = (src_id, oid)
+
+            <span class="kw">if</span> key <span class="kw">in</span> object_frame_buffer:
+                flush_and_select(key)
+
+            l_track = l_track.next
+        l_stream = l_stream.next</pre>
+    </div>
+  </div>
+
+  <!-- ── SECTION 6: FLUSH ── -->
+  <div class="section" id="flush">
+    <div class="section-label">Selection Logic</div>
+    <h2><span class="num">06</span> Flush &amp; Select Best-N</h2>
+
+    <h3>Primary: Past Frame Flush</h3>
+    <p>Triggered by NvDCF termination signal — authoritative and immediate.</p>
+
+    <h3>Safety Net: Periodic Timeout Flush</h3>
+    <p>
+      Objects still visible when the video ends never generate a termination signal.
+      Run a timeout sweep every N frames as a safety net:
+    </p>
+    <div class="code-wrap">
+      <div class="code-label">Python</div>
+      <pre>TIMEOUT_FRAMES = <span class="num">60</span>  <span class="cm"># 2 seconds at 30fps</span>
+
+<span class="kw">def</span> <span class="fn">flush_stale_tracks</span>(current_frame_num):
+    stale = [
+        k <span class="kw">for</span> k, f <span class="kw">in</span> last_seen.items()
+        <span class="kw">if</span> current_frame_num - f > TIMEOUT_FRAMES
+    ]
+    <span class="kw">for</span> key <span class="kw">in</span> stale:
+        flush_and_select(key)
+        <span class="kw">del</span> last_seen[key]</pre>
+    </div>
+
+    <h3>The flush_and_select Function</h3>
+    <div class="code-wrap">
+      <div class="code-label">Python</div>
+      <pre><span class="kw">import</span> os
+
+TOP_FRAMES = <span class="num">3</span>
+TOP_CROPS  = <span class="num">2</span>
+
+<span class="kw">def</span> <span class="fn">flush_and_select</span>(key):
+    src_id, oid = key
+    frames = object_frame_buffer.get(key, [])
+
+    <span class="kw">if not</span> frames:
+        object_frame_buffer.pop(key, <span class="nb">None</span>)
+        last_seen.pop(key, <span class="nb">None</span>)
+        <span class="kw">return</span>
+
+    <span class="cm"># Sort descending by quality score</span>
+    sorted_frames = sorted(frames, key=<span class="kw">lambda</span> x: x[<span class="st">"score"</span>], reverse=<span class="nb">True</span>)
+
+    top_frames = sorted_frames[:TOP_FRAMES]
+    top_crops  = sorted_frames[:TOP_CROPS]
+
+    os.makedirs(<span class="st">f"out/frames/src{src_id}"</span>, exist_ok=<span class="nb">True</span>)
+    os.makedirs(<span class="st">f"out/crops/src{src_id}"</span>,  exist_ok=<span class="nb">True</span>)
+
+    <span class="kw">for</span> rank, entry <span class="kw">in</span> <span class="nb">enumerate</span>(top_frames, <span class="num">1</span>):
+        out_path = (
+            <span class="st">f"out/frames/src{src_id}/"</span>
+            <span class="st">f"obj{oid}_rank{rank}_f{entry['frame_num']}.jpg"</span>
+        )
+        <span class="kw">with</span> <span class="nb">open</span>(out_path, <span class="st">"wb"</span>) <span class="kw">as</span> fh:
+            fh.write(entry[<span class="st">"crop"</span>])  <span class="cm"># stored as JPEG bytes</span>
+
+    <span class="kw">for</span> rank, entry <span class="kw">in</span> <span class="nb">enumerate</span>(top_crops, <span class="num">1</span>):
+        out_path = (
+            <span class="st">f"out/crops/src{src_id}/"</span>
+            <span class="st">f"obj{oid}_crop{rank}.jpg"</span>
+        )
+        <span class="kw">with</span> <span class="nb">open</span>(out_path, <span class="st">"wb"</span>) <span class="kw">as</span> fh:
+            fh.write(entry[<span class="st">"crop"</span>])
+
+    <span class="cm"># Clean up</span>
+    <span class="kw">del</span> object_frame_buffer[key]
+    last_seen.pop(key, <span class="nb">None</span>)</pre>
+    </div>
+
+    <div class="callout tip">
+      <div class="callout-title">Memory Tip</div>
+      Store crops as <code>cv2.imencode('.jpg', crop)[1].tobytes()</code> — compressed JPEG bytes
+      use ~10–40× less memory than raw numpy arrays. At 50 frames/object with 200×100px crops,
+      raw = ~3MB per object; JPEG bytes ≈ 100–300KB.
+    </div>
+  </div>
+
+  <!-- ── SECTION 7: SUMMARY ── -->
+  <div class="section" id="summary">
+    <div class="section-label">Architecture</div>
+    <h2><span class="num">07</span> Summary Flow</h2>
+    <div class="code-wrap">
+      <pre>Frame N arrives in buffer_probe
+  │
+  ├─ for each detection in frame
+  │    ├─ key = (source_id, object_id)
+  │    ├─ score = composite_score(conf, bbox, frame_meta)
+  │    ├─ crop  = extract_crop(surface, bbox)        ← must happen NOW
+  │    ├─ append {score, frame_num, bbox, crop_bytes}
+  │    └─ if len(buffer[key]) > CAP: evict worst entry
+  │
+  └─ check past_frame_obj_batch
+       └─ for each terminated track_id
+            └─ flush_and_select((src_id, track_id))
+
+Every 60 frames (safety net):
+  └─ flush_stale_tracks(current_frame_num)
+
+flush_and_select(key):
+  ├─ sort buffer[key] by score DESC
+  ├─ write top[:3] to out/frames/  ← top-3 frames
+  ├─ write top[:2] to out/crops/   ← top-2 crops
+  └─ del buffer[key]</pre>
+    </div>
+  </div>
+
+  <!-- ── SECTION 8: NOTES ── -->
+  <div class="section" id="notes">
+    <div class="section-label">Production Considerations</div>
+    <h2><span class="num">08</span> Practical Notes</h2>
+
+    <table>
+      <thead>
+        <tr><th>Concern</th><th>Recommendation</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Memory cap</td>
+          <td>Hard cap at 50 frames/object; evict lowest-score entry on overflow. Prevents unbounded growth for long-duration tracks.</td>
+        </tr>
+        <tr>
+          <td>Crop storage format</td>
+          <td>Store as JPEG bytes in-memory via <code>cv2.imencode</code>. 10–40× smaller than raw numpy arrays.</td>
+        </tr>
+        <tr>
+          <td>Multi-stream keying</td>
+          <td>Always use <code>(source_id, object_id)</code> tuple as buffer key — same <code>object_id</code> values appear across streams.</td>
+        </tr>
+        <tr>
+          <td>maxShadowTrackingAge</td>
+          <td>Set to expected occlusion duration in your scene. 30–60 frames typical for vehicle tracking at 30fps.</td>
+        </tr>
+        <tr>
+          <td>Downstream integration</td>
+          <td>In <code>flush_and_select</code>, push top crops directly to a Celery task or Milvus insert rather than writing to disk — avoids I/O bottleneck at high vehicle density.</td>
+        </tr>
+        <tr>
+          <td>End-of-stream flush</td>
+          <td>Attach an <code>EOS</code> pad probe or listen to <code>bus.MESSAGE_EOS</code> to flush all remaining buffers when the video ends.</td>
+        </tr>
+        <tr>
+          <td>Thread safety</td>
+          <td>GStreamer probes run on the streaming thread. If you push crops to Celery or another thread, use a <code>queue.Queue</code> as the handoff — do not call Celery directly from the probe.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ── SECTION 9: NvBufSurface ── -->
+  <div class="section" id="nvbufsurface">
+    <div class="section-label">GPU Memory Abstraction</div>
+    <h2><span class="num">09</span> NvBufSurface — The GPU Frame Buffer</h2>
+    <p>
+      A <code>NvBufSurface</code> is DeepStream's core abstraction for GPU-accessible video frame memory.
+      Rather than passing raw CPU buffers between elements (which would require expensive CPU↔GPU copies at every stage),
+      every plugin in the chain operates directly on GPU memory — zero copies, full throughput.
+    </p>
+
+    <div class="callout info">
+      <div class="callout-title">Core Idea</div>
+      Think of a surface as a <strong>tile sheet of frames living on the GPU</strong>. PGIE, SGIEs, NvDCF, and OSD
+      all read and write to this same tile sheet without ever touching CPU memory. Your Python probes operate on the
+      metadata sidecar (<code>NvDsBatchMeta</code>) that rides alongside the surface — not on pixels — unless you
+      explicitly map the surface.
+    </div>
+
+    <h3>Batching and nvstreammux</h3>
+    <p>
+      <code>nvstreammux</code> is what creates the batched surface. It collects frames from multiple RTSP streams and
+      packs them into a single <code>NvBufSurface</code> batch, enabling TensorRT to run one inference call on the
+      whole batch rather than N separate calls — the primary throughput multiplier for multi-stream pipelines.
+    </p>
+
+    <div class="pipeline-flow">
+      <div class="pipe-node"><div class="pipe-box">Stream 0</div><div class="pipe-arrow">→</div></div>
+      <div class="pipe-node"><div class="pipe-box">Stream 1</div><div class="pipe-arrow">→</div></div>
+      <div class="pipe-node"><div class="pipe-box">Stream 2</div><div class="pipe-arrow">→</div></div>
+      <div class="pipe-node"><div class="pipe-box highlight">nvstreammux</div><div class="pipe-arrow">→</div></div>
+      <div class="pipe-node"><div class="pipe-box highlight">NvBufSurface [batch=N]</div><div class="pipe-arrow">→</div></div>
+      <div class="pipe-node"><div class="pipe-box">PGIE (single TRT call)</div></div>
+    </div>
+
+    <h3>Structure Layout</h3>
+    <div class="hierarchy">
+      <span class="h-node">
+        <span class="h-name">NvBufSurface</span>
+        <span class="h-type"> — one per GstBuffer</span>
+      </span>
+      <span class="h-node" style="padding-left:22px">
+        ├── <span class="h-name">batchSize</span>
+        <span class="h-type"> — total allocated slots</span>
+      </span>
+      <span class="h-node" style="padding-left:22px">
+        ├── <span class="h-name">numFilled</span>
+        <span class="h-type"> — actual frames in this batch</span>
+      </span>
+      <span class="h-node" style="padding-left:22px">
+        ├── <span class="h-name">memType</span>
+        <span class="h-type"> — NVBUF_MEM_CUDA_DEVICE / UNIFIED / PINNED</span>
+      </span>
+      <span class="h-node" style="padding-left:22px">
+        └── <span class="h-name">surfaceList[]</span>
+        <span class="h-type"> — NvBufSurfaceParams, one per frame</span>
+      </span>
+      <span class="h-node" style="padding-left:44px">
+        ├── <span class="h-name">width, height, pitch</span>
+      </span>
+      <span class="h-node" style="padding-left:44px">
+        ├── <span class="h-name">colorFormat</span>
+        <span class="h-type"> — NV12, RGBA, etc.</span>
+      </span>
+      <span class="h-node" style="padding-left:44px">
+        ├── <span class="h-name">dataPtr</span>
+        <span class="h-type"> — GPU memory pointer</span>
+      </span>
+      <span class="h-node" style="padding-left:44px">
+        └── <span class="h-name">mappedAddr</span>
+        <span class="h-type"> — CPU-mapped address (after explicit mapping)</span>
+      </span>
+    </div>
+
+    <h3>Memory Types</h3>
+    <table>
+      <thead>
+        <tr><th>Type</th><th>Location</th><th>Best for</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>NVBUF_MEM_CUDA_DEVICE</td>
+          <td>GPU VRAM only</td>
+          <td>Pure GPU inference path — fastest, no CPU access</td>
+        </tr>
+        <tr>
+          <td>NVBUF_MEM_CUDA_UNIFIED</td>
+          <td>CPU + GPU accessible</td>
+          <td>Probe-based CPU access without explicit map/unmap cycle</td>
+        </tr>
+        <tr>
+          <td>NVBUF_MEM_CUDA_PINNED</td>
+          <td>Pinned host memory</td>
+          <td>Fast DMA transfers between CPU and GPU</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Accessing Surface Pixels in a Probe</h3>
+    <p>
+      Use <code>pyds.get_nvds_buf_surface()</code> to map the surface into a numpy array.
+      This is valid <strong>only inside the probe callback</strong> — the buffer is returned to the pool
+      the moment you return <code>Gst.PadProbeReturn.OK</code>.
+    </p>
+    <div class="code-wrap">
+      <div class="code-label">Python · surface access in probe</div>
+      <pre><span class="kw">def</span> <span class="fn">buffer_probe</span>(pad, info, u_data):
+    gst_buffer = info.get_buffer()
+    batch_meta = pyds.gst_buffer_get_nvds_batch_meta(<span class="nb">hash</span>(gst_buffer))
+
+    l_frame = batch_meta.frame_meta_list
+    <span class="kw">while</span> l_frame:
+        frame_meta = pyds.NvDsFrameMeta.cast(l_frame.data)
+
+        <span class="cm"># Map GPU surface → numpy array (RGBA or NV12 depending on pipeline)</span>
+        n_frame = pyds.get_nvds_buf_surface(
+            <span class="nb">hash</span>(gst_buffer),
+            frame_meta.batch_id   <span class="cm"># index into surfaceList[]</span>
+        )
+
+        <span class="cm"># Copy immediately — pointer is invalid after probe returns</span>
+        frame_copy = np.array(n_frame, copy=<span class="nb">True</span>)
+        frame_bgr  = cv2.cvtColor(frame_copy, cv2.COLOR_RGBA2BGR)
+
+        <span class="cm"># ... crop objects from frame_bgr ...</span>
+
+        l_frame = l_frame.next
+
+    <span class="kw">return</span> Gst.PadProbeReturn.OK</pre>
+    </div>
+
+    <div class="callout warn">
+      <div class="callout-title">Lifetime Warning</div>
+      <code>NvBufSurface</code> pointers returned by <code>get_nvds_buf_surface()</code> are only valid
+      <em>inside</em> the probe. Storing the pointer and reading pixels later is a use-after-free bug.
+      Always <code>np.array(..., copy=True)</code> before exiting the probe.
+    </div>
+
+    <h3>Why This Matters for Best-Frame Selection</h3>
+    <p>
+      The entire crop extraction pipeline in Section 04 is built on this constraint. You must extract and compress
+      the crop (<code>cv2.imencode</code>) within the probe, then store the resulting JPEG bytes — not the raw
+      numpy array and certainly not a pointer to the GPU buffer.
+    </p>
+  </div>
+
+  <!-- ── SECTION 10: NvDsPastFrameObjBatch Deep Dive ── -->
+  <div class="section" id="pastframebatch">
+    <div class="section-label">Tracker History API</div>
+    <h2><span class="num">10</span> NvDsPastFrameObjBatch — Deep Dive</h2>
+    <p>
+      <code>NvDsPastFrameObjBatch</code> is the structure the NvDCF tracker populates when past-frame data reporting
+      is enabled. It exposes detection history that was buffered internally by the tracker during uncertainty windows —
+      detections that were held back from the normal <code>NvDsObjectMeta</code> path while the tracker was still
+      resolving track identity.
+    </p>
+
+    <h3>Why It Exists</h3>
+    <p>
+      NvDCF uses an internal buffer to smooth detections, handle occlusion, and maintain track continuity.
+      During this buffering period, a frame may pass through the pipeline <strong>without</strong> a confirmed
+      detection surfaced in <code>NvDsObjectMeta</code> — but the tracker still held a candidate internally.
+      <code>NvDsPastFrameObjBatch</code> flushes that history out when a track terminates or when the shadow
+      tracking window expires.
+    </p>
+
+    <div class="two-col">
+      <div class="mini-card">
+        <h4>Use Case: Trajectory Reconstruction</h4>
+        <p>Forensic reconstruction of a track's full detection timeline, including frames where the object was
+        present but the tracker hadn't yet confirmed the detection.</p>
+      </div>
+      <div class="mini-card">
+        <h4>Use Case: LP / Attribute Gap Fill</h4>
+        <p>Recover bbox history for frames where LP reads or color classifications were skipped during the tracker's
+        uncertainty window — retry attribute extraction against those frames retroactively.</p>
+      </div>
+    </div>
+
+    <h3>Full Structure Hierarchy</h3>
+    <div class="hierarchy">
+      <span class="h-node">
+        <span class="h-name">NvDsPastFrameObjBatch</span>
+        <span class="h-type"> — one per GstBuffer (entire batch)</span>
+      </span>
+      <span class="h-node" style="padding-left:22px">
+        └── <span class="h-name">list[]</span>
+        <span class="h-type"> — array of per-stream containers</span>
+      </span>
+      <span class="h-node" style="padding-left:44px">
+        └── <span class="h-name">NvDsPastFrameObjStream</span>
+        <span class="h-field">streamID, surfaceStreamID, numFilled</span>
+        <span class="h-type"> — one per source_id</span>
+      </span>
+      <span class="h-node" style="padding-left:66px">
+        └── <span class="h-name">NvDsPastFrameObjList</span>
+        <span class="h-field">uniqueId, classId, numObj</span>
+        <span class="h-type"> — one per tracked object</span>
+      </span>
+      <span class="h-node" style="padding-left:88px">
+        └── <span class="h-name">NvDsPastFrameObj</span>
+        <span class="h-field">frameNum, tBbox, confidence, age</span>
+        <span class="h-type"> — one entry per buffered frame</span>
+      </span>
+    </div>
+
+    <h3>Field Reference</h3>
+    <table>
+      <thead>
+        <tr><th>Field</th><th>Type</th><th>Notes</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>streamID</td>
+          <td>uint32</td>
+          <td>Matches <code>frame_meta.source_id</code> — use as composite key prefix</td>
+        </tr>
+        <tr>
+          <td>numFilled</td>
+          <td>uint32</td>
+          <td>Objects with history in this stream. Always loop to <code>numFilled</code>, not <code>numAllocated</code></td>
+        </tr>
+        <tr>
+          <td>uniqueId</td>
+          <td>uint64</td>
+          <td>Same <code>object_id</code> as in <code>NvDsObjectMeta</code> — direct correlation key</td>
+        </tr>
+        <tr>
+          <td>numObj</td>
+          <td>uint32</td>
+          <td>Number of past frame entries in <code>objList[]</code> for this track</td>
+        </tr>
+        <tr>
+          <td>frameNum</td>
+          <td>uint64</td>
+          <td>Matches <code>NvDsFrameMeta.frame_num</code> — chronological order, oldest first</td>
+        </tr>
+        <tr>
+          <td>tBbox</td>
+          <td>NvDsComp_BboxInfo</td>
+          <td>Tracker bbox (<code>.m_unClippedRect</code> → left, top, width, height)</td>
+        </tr>
+        <tr>
+          <td>confidence</td>
+          <td>float</td>
+          <td>Tracker confidence for this buffered detection</td>
+        </tr>
+        <tr>
+          <td>age</td>
+          <td>uint32</td>
+          <td>Frames elapsed since track was first created</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Enabling in Tracker Config</h3>
+    <div class="code-wrap">
+      <div class="code-label">config_tracker_NvDCF.yml</div>
+      <pre>NvDCF:
+  outputHistoryData: <span class="num">1</span>        <span class="cm"># enables NvDsPastFrameObjBatch population</span>
+  maxHistorySize:    <span class="num">5</span>        <span class="cm"># past frames buffered per track</span>
+
+  <span class="cm"># If you also want ReID embeddings in past frame entries:</span>
+  reidType:          <span class="num">3</span>
+  outputReidTensor:  <span class="num">1</span></pre>
+    </div>
+
+    <div class="callout warn">
+      <div class="callout-title">Config Requirement</div>
+      Without <code>outputHistoryData: 1</code>, the user meta list will never contain
+      <code>NVDS_TRACKER_PAST_FRAME_META</code> entries — the past frame batch will be absent entirely.
+      The periodic timeout flush (Section 06) will still fire, but you lose the authoritative termination signal.
+    </div>
+
+    <h3>Full Python Traversal Pattern</h3>
+    <div class="code-wrap">
+      <div class="code-label">Python · NvDsPastFrameObjBatch traversal</div>
+      <pre><span class="kw">import</span> pyds
+
+<span class="kw">def</span> <span class="fn">tracker_src_probe</span>(pad, info, u_data):
+    gst_buffer = info.get_buffer()
+    batch_meta = pyds.gst_buffer_get_nvds_batch_meta(<span class="nb">hash</span>(gst_buffer))
+
+    <span class="cm"># Past frame data arrives as user meta on the batch</span>
+    l_usr = batch_meta.batch_user_meta_list
+    <span class="kw">while</span> l_usr <span class="kw">is not None</span>:
+        <span class="kw">try</span>:
+            usr_meta = pyds.NvDsUserMeta.cast(l_usr.data)
+        <span class="kw">except</span> StopIteration:
+            <span class="kw">break</span>
+
+        <span class="kw">if</span> (usr_meta.base_meta.meta_type ==
+                pyds.NvDsMetaType.NVDS_TRACKER_PAST_FRAME_META):
+
+            pf_batch = pyds.NvDsPastFrameObjBatch.cast(
+                usr_meta.user_meta_data
+            )
+
+            <span class="cm"># Iterate streams</span>
+            <span class="kw">for</span> s_idx <span class="kw">in</span> <span class="nb">range</span>(pf_batch.numAllocated):
+                pf_stream = pf_batch.list[s_idx]
+                src_id    = pf_stream.streamID
+
+                <span class="cm"># Iterate tracked objects with history</span>
+                <span class="kw">for</span> o_idx <span class="kw">in</span> <span class="nb">range</span>(pf_stream.numFilled):
+                    pf_obj_list = pf_stream.list[o_idx]
+                    track_id    = pf_obj_list.uniqueId
+                    key         = (src_id, track_id)
+
+                    <span class="cm"># Iterate buffered past frames for this track</span>
+                    <span class="kw">for</span> f_idx <span class="kw">in</span> <span class="nb">range</span>(pf_obj_list.numObj):
+                        pf = pf_obj_list.objList[f_idx]
+                        bbox = pf.tBbox.m_unClippedRect
+                        print(
+                            <span class="st">f"Track {track_id} | "</span>
+                            <span class="st">f"frame {pf.frameNum} | "</span>
+                            <span class="st">f"conf {pf.confidence:.3f} | "</span>
+                            <span class="st">f"age {pf.age} | "</span>
+                            <span class="st">f"bbox ({bbox.left:.0f},{bbox.top:.0f},"</span>
+                            <span class="st">f"{bbox.width:.0f},{bbox.height:.0f})"</span>
+                        )
+
+                    <span class="cm"># Flush accumulator if key exists</span>
+                    <span class="kw">if</span> key <span class="kw">in</span> object_frame_buffer:
+                        flush_and_select(key)
+
+        <span class="kw">try</span>:
+            l_usr = l_usr.next
+        <span class="kw">except</span> StopIteration:
+            <span class="kw">break</span>
+
+    <span class="kw">return</span> Gst.PadProbeReturn.OK</pre>
+    </div>
+
+    <h3>Relationship to Active Metadata</h3>
+    <div class="callout info">
+      <div class="callout-title">Mutual Exclusivity</div>
+      For any given frame, a detection appears in <em>either</em> the normal <code>NvDsObjectMeta</code> on
+      <code>NvDsFrameMeta</code> <em>or</em> in past frame data — never both. Past frame data represents
+      detections that were held back during the tracker's internal buffering window.
+      <code>uniqueId</code> in <code>NvDsPastFrameObjList</code> is the same <code>object_id</code> you see
+      in active object meta, enabling clean cross-correlation.
+    </div>
+
+    <h3>Gap-Filling Track History Pattern</h3>
+    <p>
+      Combine past frame data with your live accumulator to reconstruct a lossless per-track detection timeline:
+    </p>
+    <div class="code-wrap">
+      <div class="code-label">Python · merge past frames into accumulator</div>
+      <pre><span class="kw">def</span> <span class="fn">merge_past_frames_into_buffer</span>(pf_batch, track_history):
+    <span class="kw">for</span> s_idx <span class="kw">in</span> <span class="nb">range</span>(pf_batch.numAllocated):
+        stream = pf_batch.list[s_idx]
+        <span class="kw">for</span> o_idx <span class="kw">in</span> <span class="nb">range</span>(stream.numFilled):
+            obj = stream.list[o_idx]
+            tid = obj.uniqueId
+            key = (stream.streamID, tid)
+
+            <span class="kw">if</span> key <span class="kw">not in</span> track_history:
+                track_history[key] = []
+
+            <span class="kw">for</span> f_idx <span class="kw">in</span> <span class="nb">range</span>(obj.numObj):
+                pf = obj.objList[f_idx]
+                track_history[key].append({
+                    <span class="st">"frame"</span>:  pf.frameNum,
+                    <span class="st">"conf"</span>:   pf.confidence,
+                    <span class="st">"age"</span>:    pf.age,
+                    <span class="st">"bbox"</span>:   pf.tBbox.m_unClippedRect,
+                    <span class="st">"source"</span>: <span class="st">"past_frame"</span>,  <span class="cm"># distinguish from live detections</span>
+                })</pre>
+    </div>
+
+    <div class="callout tip">
+      <div class="callout-title">Integration Tip</div>
+      Call <code>merge_past_frames_into_buffer()</code> from your main buffer probe alongside the live
+      accumulation loop. Past frame entries carry bbox geometry and confidence but <strong>no pixel data</strong>
+      — the GPU surface for those frames is long gone. Use them to score and rank, but crop pixels must come
+      from live frames captured in the same probe pass.
+    </div>
+  </div>
+
+  <!-- ── SECTION 11: JSON SAMPLE ── -->
+  <div class="section" id="jsonviewer">
+    <div class="section-label">Data Shape Reference</div>
+    <h2><span class="num">11</span> NvDsPastFrameObjBatch — Sample JSON</h2>
+    <p>
+      A concrete example of what the structure contains at runtime: 2 streams, 3 tracks (IDs 42, 43, 17),
+      and 7 total buffered past-frame entries. Use the view toggles to switch between clean JSON,
+      annotated fields, and a flat field reference.
+    </p>
+
+    <style>
+      .pf-header-ds { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+      .pf-badge-ds {
+        font-family: 'Syne Mono', monospace;
+        font-size: 10px;
+        padding: 3px 10px;
+        border-radius: 4px;
+        border: 1px solid;
+        letter-spacing: 0.05em;
+      }
+      .badge-meta-ds  { background: #0a1f2e; color: #00d4ff; border-color: #1a4060; }
+      .badge-stream-ds{ background: #0a1f10; color: #7fff6b; border-color: #1a4030; }
+      .badge-track-ds { background: #1a1000; color: #ff9966; border-color: #3a2800; }
+      .badge-frame-ds { background: #100a2e; color: #b0a0ff; border-color: #2a1a60; }
+
+      .json-wrap-ds {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+      .json-toolbar-ds {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 16px;
+        border-bottom: 1px solid var(--border);
+        background: var(--surface2);
+        flex-wrap: wrap;
+      }
+      .tb-label-ds {
+        font-family: 'Syne Mono', monospace;
+        font-size: 10px;
+        letter-spacing: 0.15em;
+        text-transform: uppercase;
+        color: var(--muted);
+        margin-right: 4px;
+      }
+      .tb-btn-ds {
+        font-family: 'Syne Mono', monospace;
+        font-size: 10px;
+        padding: 4px 12px;
+        border-radius: 4px;
+        border: 1px solid var(--border2);
+        background: transparent;
+        color: var(--text-dim);
+        cursor: pointer;
+        transition: all 0.15s;
+        letter-spacing: 0.05em;
+      }
+      .tb-btn-ds:hover { border-color: var(--accent); color: var(--accent); }
+      .tb-btn-ds.ds-active { background: rgba(0,212,255,0.08); border-color: var(--accent); color: var(--accent); }
+
+      .json-body-ds {
+        padding: 20px 24px;
+        overflow-x: auto;
+        max-height: 580px;
+        overflow-y: auto;
+      }
+      .json-body-ds pre {
+        background: transparent;
+        border: none;
+        padding: 0;
+        margin: 0;
+        font-family: 'DM Mono', monospace;
+        font-size: 12.5px;
+        line-height: 1.85;
+        color: var(--text);
+      }
+      .jk  { color: #7ba7ff; }
+      .js  { color: #a8e86c; }
+      .jn  { color: #ff9966; }
+      .jcm { color: #3d6070; font-style: italic; }
+
+      .pf-legend-ds { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 14px; }
+      .leg-item-ds { display: flex; align-items: center; gap: 6px; font-family: 'Syne Mono', monospace; font-size: 10px; color: var(--text-dim); }
+      .leg-dot-ds { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+    </style>
+
+    <div class="pf-header-ds">
+      <span class="pf-badge-ds badge-meta-ds">batch_user_meta</span>
+      <span class="pf-badge-ds badge-stream-ds">2 streams</span>
+      <span class="pf-badge-ds badge-track-ds">3 tracks</span>
+      <span class="pf-badge-ds badge-frame-ds">7 past frames</span>
+    </div>
+
+    <div class="json-wrap-ds">
+      <div class="json-toolbar-ds">
+        <span class="tb-label-ds">View:</span>
+        <button class="tb-btn-ds ds-active" id="ds-btn-full" onclick="dsSetView('full')">full structure</button>
+        <button class="tb-btn-ds" id="ds-btn-anno" onclick="dsSetView('anno')">with annotations</button>
+        <button class="tb-btn-ds" id="ds-btn-flat" onclick="dsSetView('flat')">field reference</button>
+      </div>
+      <div class="json-body-ds" id="ds-json-body"></div>
+    </div>
+
+    <div class="pf-legend-ds">
+      <div class="leg-item-ds"><div class="leg-dot-ds" style="background:#7ba7ff;"></div>key</div>
+      <div class="leg-item-ds"><div class="leg-dot-ds" style="background:#a8e86c;"></div>string value</div>
+      <div class="leg-item-ds"><div class="leg-dot-ds" style="background:#ff9966;"></div>number value</div>
+      <div class="leg-item-ds"><div class="leg-dot-ds" style="background:#3d6070;"></div>annotation</div>
+    </div>
+
+    <div class="callout info" style="margin-top:24px;">
+      <div class="callout-title">Key Observations from This Sample</div>
+      <ul style="margin-top:8px;">
+        <li><code>numFilled</code> is 2 for stream 0 but only 1 for stream 1 — always loop to <code>numFilled</code>, not <code>numAllocated</code>.</li>
+        <li>Track 43 has <code>age: 3</code> — a very short-lived track terminated almost immediately.</li>
+        <li>Stream 1 has <code>frameNum: 3041</code> while stream 0 is at <code>1184</code> — each stream has its own independent frame counter.</li>
+        <li><code>uniqueId: 17</code> could also exist on stream 0 — always composite-key as <code>(streamID, uniqueId)</code>.</li>
+        <li>Track 42 shows rising confidence (0.71 → 0.83 → 0.91) — the tracker gaining certainty. Track 17 shows falling confidence (0.48 → 0.44) — object leaving the scene.</li>
+      </ul>
+    </div>
+  </div>
+
+  <script>
+  const DS_FULL = `{
+  <span class="jk">"meta_type"</span>: <span class="js">"NVDS_TRACKER_PAST_FRAME_META"</span>,
+  <span class="jk">"numAllocated"</span>: <span class="jn">2</span>,
+
+  <span class="jk">"list"</span>: [
+
+    {
+      <span class="jk">"streamID"</span>: <span class="jn">0</span>,
+      <span class="jk">"surfaceStreamID"</span>: <span class="jn">0</span>,
+      <span class="jk">"numFilled"</span>: <span class="jn">2</span>,
+
+      <span class="jk">"list"</span>: [
+
+        {
+          <span class="jk">"uniqueId"</span>: <span class="jn">42</span>,
+          <span class="jk">"classId"</span>: <span class="jn">0</span>,
+          <span class="jk">"numObj"</span>: <span class="jn">3</span>,
+          <span class="jk">"objList"</span>: [
+            {
+              <span class="jk">"frameNum"</span>: <span class="jn">1184</span>,
+              <span class="jk">"tBbox"</span>: { <span class="jk">"left"</span>: <span class="jn">412.3</span>, <span class="jk">"top"</span>: <span class="jn">218.7</span>, <span class="jk">"width"</span>: <span class="jn">154.2</span>, <span class="jk">"height"</span>: <span class="jn">88.1</span> },
+              <span class="jk">"confidence"</span>: <span class="jn">0.71</span>,
+              <span class="jk">"age"</span>: <span class="jn">12</span>
+            },
+            {
+              <span class="jk">"frameNum"</span>: <span class="jn">1185</span>,
+              <span class="jk">"tBbox"</span>: { <span class="jk">"left"</span>: <span class="jn">418.9</span>, <span class="jk">"top"</span>: <span class="jn">219.4</span>, <span class="jk">"width"</span>: <span class="jn">153.8</span>, <span class="jk">"height"</span>: <span class="jn">88.5</span> },
+              <span class="jk">"confidence"</span>: <span class="jn">0.83</span>,
+              <span class="jk">"age"</span>: <span class="jn">13</span>
+            },
+            {
+              <span class="jk">"frameNum"</span>: <span class="jn">1186</span>,
+              <span class="jk">"tBbox"</span>: { <span class="jk">"left"</span>: <span class="jn">427.1</span>, <span class="jk">"top"</span>: <span class="jn">220.0</span>, <span class="jk">"width"</span>: <span class="jn">152.6</span>, <span class="jk">"height"</span>: <span class="jn">89.2</span> },
+              <span class="jk">"confidence"</span>: <span class="jn">0.91</span>,
+              <span class="jk">"age"</span>: <span class="jn">14</span>
+            }
+          ]
+        },
+
+        {
+          <span class="jk">"uniqueId"</span>: <span class="jn">43</span>,
+          <span class="jk">"classId"</span>: <span class="jn">0</span>,
+          <span class="jk">"numObj"</span>: <span class="jn">2</span>,
+          <span class="jk">"objList"</span>: [
+            {
+              <span class="jk">"frameNum"</span>: <span class="jn">1185</span>,
+              <span class="jk">"tBbox"</span>: { <span class="jk">"left"</span>: <span class="jn">892.4</span>, <span class="jk">"top"</span>: <span class="jn">305.6</span>, <span class="jk">"width"</span>: <span class="jn">198.7</span>, <span class="jk">"height"</span>: <span class="jn">112.3</span> },
+              <span class="jk">"confidence"</span>: <span class="jn">0.54</span>,
+              <span class="jk">"age"</span>: <span class="jn">3</span>
+            },
+            {
+              <span class="jk">"frameNum"</span>: <span class="jn">1186</span>,
+              <span class="jk">"tBbox"</span>: { <span class="jk">"left"</span>: <span class="jn">904.1</span>, <span class="jk">"top"</span>: <span class="jn">307.2</span>, <span class="jk">"width"</span>: <span class="jn">197.9</span>, <span class="jk">"height"</span>: <span class="jn">111.8</span> },
+              <span class="jk">"confidence"</span>: <span class="jn">0.62</span>,
+              <span class="jk">"age"</span>: <span class="jn">4</span>
+            }
+          ]
+        }
+
+      ]
+    },
+
+    {
+      <span class="jk">"streamID"</span>: <span class="jn">1</span>,
+      <span class="jk">"surfaceStreamID"</span>: <span class="jn">1</span>,
+      <span class="jk">"numFilled"</span>: <span class="jn">1</span>,
+
+      <span class="jk">"list"</span>: [
+
+        {
+          <span class="jk">"uniqueId"</span>: <span class="jn">17</span>,
+          <span class="jk">"classId"</span>: <span class="jn">0</span>,
+          <span class="jk">"numObj"</span>: <span class="jn">2</span>,
+          <span class="jk">"objList"</span>: [
+            {
+              <span class="jk">"frameNum"</span>: <span class="jn">3041</span>,
+              <span class="jk">"tBbox"</span>: { <span class="jk">"left"</span>: <span class="jn">110.5</span>, <span class="jk">"top"</span>: <span class="jn">490.2</span>, <span class="jk">"width"</span>: <span class="jn">176.4</span>, <span class="jk">"height"</span>: <span class="jn">95.7</span> },
+              <span class="jk">"confidence"</span>: <span class="jn">0.48</span>,
+              <span class="jk">"age"</span>: <span class="jn">29</span>
+            },
+            {
+              <span class="jk">"frameNum"</span>: <span class="jn">3042</span>,
+              <span class="jk">"tBbox"</span>: { <span class="jk">"left"</span>: <span class="jn">106.2</span>, <span class="jk">"top"</span>: <span class="jn">493.1</span>, <span class="jk">"width"</span>: <span class="jn">177.1</span>, <span class="jk">"height"</span>: <span class="jn">96.4</span> },
+              <span class="jk">"confidence"</span>: <span class="jn">0.44</span>,
+              <span class="jk">"age"</span>: <span class="jn">30</span>
+            }
+          ]
+        }
+
+      ]
+    }
+
+  ]
+}`;
+
+  const DS_ANNO = `{
+  <span class="jk">"meta_type"</span>: <span class="js">"NVDS_TRACKER_PAST_FRAME_META"</span>,  <span class="jcm">← user_meta.base_meta.meta_type check</span>
+  <span class="jk">"numAllocated"</span>: <span class="jn">2</span>,  <span class="jcm">← capacity of list[] (== batch_size)</span>
+
+  <span class="jk">"list"</span>: [  <span class="jcm">← NvDsPastFrameObjStream[numAllocated]</span>
+
+    {  <span class="jcm">← stream 0 (source_id 0)</span>
+      <span class="jk">"streamID"</span>: <span class="jn">0</span>,  <span class="jcm">← matches frame_meta.source_id</span>
+      <span class="jk">"surfaceStreamID"</span>: <span class="jn">0</span>,  <span class="jcm">← surface batch slot index</span>
+      <span class="jk">"numFilled"</span>: <span class="jn">2</span>,  <span class="jcm">← iterate list[] only to numFilled, not numAllocated</span>
+
+      <span class="jk">"list"</span>: [  <span class="jcm">← NvDsPastFrameObjList per terminated/buffered track</span>
+
+        {  <span class="jcm">← track 42 — terminated after frame 1186</span>
+          <span class="jk">"uniqueId"</span>: <span class="jn">42</span>,  <span class="jcm">← same as NvDsObjectMeta.object_id — direct correlation key</span>
+          <span class="jk">"classId"</span>: <span class="jn">0</span>,  <span class="jcm">← PGIE class (0 = vehicle in typical config)</span>
+          <span class="jk">"numObj"</span>: <span class="jn">3</span>,  <span class="jcm">← 3 buffered past frames for this track</span>
+          <span class="jk">"objList"</span>: [  <span class="jcm">← NvDsPastFrameObj[], oldest frame first</span>
+            {
+              <span class="jk">"frameNum"</span>: <span class="jn">1184</span>,  <span class="jcm">← matches NvDsFrameMeta.frame_num</span>
+              <span class="jk">"tBbox"</span>: { <span class="jk">"left"</span>: <span class="jn">412.3</span>, <span class="jk">"top"</span>: <span class="jn">218.7</span>, <span class="jk">"width"</span>: <span class="jn">154.2</span>, <span class="jk">"height"</span>: <span class="jn">88.1</span> },  <span class="jcm">← tBbox.m_unClippedRect</span>
+              <span class="jk">"confidence"</span>: <span class="jn">0.71</span>,  <span class="jcm">← tracker confidence, NOT PGIE confidence</span>
+              <span class="jk">"age"</span>: <span class="jn">12</span>  <span class="jcm">← frames since track first created</span>
+            },
+            {
+              <span class="jk">"frameNum"</span>: <span class="jn">1185</span>,
+              <span class="jk">"tBbox"</span>: { <span class="jk">"left"</span>: <span class="jn">418.9</span>, <span class="jk">"top"</span>: <span class="jn">219.4</span>, <span class="jk">"width"</span>: <span class="jn">153.8</span>, <span class="jk">"height"</span>: <span class="jn">88.5</span> },
+              <span class="jk">"confidence"</span>: <span class="jn">0.83</span>,
+              <span class="jk">"age"</span>: <span class="jn">13</span>
+            },
+            {
+              <span class="jk">"frameNum"</span>: <span class="jn">1186</span>,
+              <span class="jk">"tBbox"</span>: { <span class="jk">"left"</span>: <span class="jn">427.1</span>, <span class="jk">"top"</span>: <span class="jn">220.0</span>, <span class="jk">"width"</span>: <span class="jn">152.6</span>, <span class="jk">"height"</span>: <span class="jn">89.2</span> },
+              <span class="jk">"confidence"</span>: <span class="jn">0.91</span>,  <span class="jcm">← rising confidence = tracker gaining certainty</span>
+              <span class="jk">"age"</span>: <span class="jn">14</span>
+            }
+          ]
+        },
+
+        {  <span class="jcm">← track 43 — short-lived, age only reached 4</span>
+          <span class="jk">"uniqueId"</span>: <span class="jn">43</span>,
+          <span class="jk">"classId"</span>: <span class="jn">0</span>,
+          <span class="jk">"numObj"</span>: <span class="jn">2</span>,
+          <span class="jk">"objList"</span>: [
+            {
+              <span class="jk">"frameNum"</span>: <span class="jn">1185</span>,
+              <span class="jk">"tBbox"</span>: { <span class="jk">"left"</span>: <span class="jn">892.4</span>, <span class="jk">"top"</span>: <span class="jn">305.6</span>, <span class="jk">"width"</span>: <span class="jn">198.7</span>, <span class="jk">"height"</span>: <span class="jn">112.3</span> },
+              <span class="jk">"confidence"</span>: <span class="jn">0.54</span>,
+              <span class="jk">"age"</span>: <span class="jn">3</span>  <span class="jcm">← age=3: track existed only 3 frames before termination</span>
+            },
+            {
+              <span class="jk">"frameNum"</span>: <span class="jn">1186</span>,
+              <span class="jk">"tBbox"</span>: { <span class="jk">"left"</span>: <span class="jn">904.1</span>, <span class="jk">"top"</span>: <span class="jn">307.2</span>, <span class="jk">"width"</span>: <span class="jn">197.9</span>, <span class="jk">"height"</span>: <span class="jn">111.8</span> },
+              <span class="jk">"confidence"</span>: <span class="jn">0.62</span>,
+              <span class="jk">"age"</span>: <span class="jn">4</span>
+            }
+          ]
+        }
+
+      ]
+    },
+
+    {  <span class="jcm">← stream 1 — independent frame counter (3041 vs 1184 on stream 0)</span>
+      <span class="jk">"streamID"</span>: <span class="jn">1</span>,
+      <span class="jk">"surfaceStreamID"</span>: <span class="jn">1</span>,
+      <span class="jk">"numFilled"</span>: <span class="jn">1</span>,  <span class="jcm">← only 1 track has buffered history in stream 1 this batch</span>
+
+      <span class="jk">"list"</span>: [
+
+        {  <span class="jcm">← uniqueId 17 on stream 1 — could collide with stream 0; always use (streamID, uniqueId)</span>
+          <span class="jk">"uniqueId"</span>: <span class="jn">17</span>,
+          <span class="jk">"classId"</span>: <span class="jn">0</span>,
+          <span class="jk">"numObj"</span>: <span class="jn">2</span>,
+          <span class="jk">"objList"</span>: [
+            {
+              <span class="jk">"frameNum"</span>: <span class="jn">3041</span>,
+              <span class="jk">"tBbox"</span>: { <span class="jk">"left"</span>: <span class="jn">110.5</span>, <span class="jk">"top"</span>: <span class="jn">490.2</span>, <span class="jk">"width"</span>: <span class="jn">176.4</span>, <span class="jk">"height"</span>: <span class="jn">95.7</span> },
+              <span class="jk">"confidence"</span>: <span class="jn">0.48</span>,
+              <span class="jk">"age"</span>: <span class="jn">29</span>  <span class="jcm">← age near maxShadowTrackingAge — about to be force-terminated</span>
+            },
+            {
+              <span class="jk">"frameNum"</span>: <span class="jn">3042</span>,
+              <span class="jk">"tBbox"</span>: { <span class="jk">"left"</span>: <span class="jn">106.2</span>, <span class="jk">"top"</span>: <span class="jn">493.1</span>, <span class="jk">"width"</span>: <span class="jn">177.1</span>, <span class="jk">"height"</span>: <span class="jn">96.4</span> },
+              <span class="jk">"confidence"</span>: <span class="jn">0.44</span>,  <span class="jcm">← declining confidence = object leaving frame / occluded</span>
+              <span class="jk">"age"</span>: <span class="jn">30</span>
+            }
+          ]
+        }
+
+      ]
+    }
+
+  ]
+}`;
+
+  const DS_FLAT = `NvDsPastFrameObjBatch
+  <span class="jk">"meta_type"</span>        <span class="js">"NVDS_TRACKER_PAST_FRAME_META"</span>   <span class="jcm">user meta type discriminator</span>
+  <span class="jk">"numAllocated"</span>     <span class="jn">2</span>                                 <span class="jcm">stream slot capacity == batch_size</span>
+
+NvDsPastFrameObjStream  (one per source stream)
+  <span class="jk">"streamID"</span>         <span class="jn">0</span> | <span class="jn">1</span>                             <span class="jcm">== frame_meta.source_id</span>
+  <span class="jk">"surfaceStreamID"</span>  <span class="jn">0</span> | <span class="jn">1</span>                             <span class="jcm">surface batch slot index</span>
+  <span class="jk">"numFilled"</span>        <span class="jn">2</span> | <span class="jn">1</span>                             <span class="jcm">tracks with history — loop to this, not numAllocated</span>
+
+NvDsPastFrameObjList  (one per tracked object)
+  <span class="jk">"uniqueId"</span>         <span class="jn">42</span> | <span class="jn">43</span> | <span class="jn">17</span>                    <span class="jcm">== NvDsObjectMeta.object_id</span>
+  <span class="jk">"classId"</span>          <span class="jn">0</span>                                 <span class="jcm">PGIE class index</span>
+  <span class="jk">"numObj"</span>           <span class="jn">3</span> | <span class="jn">2</span> | <span class="jn">2</span>                        <span class="jcm">buffered past frame count</span>
+
+NvDsPastFrameObj  (one per buffered frame, oldest first)
+  <span class="jk">"frameNum"</span>         <span class="jn">1184</span> ... <span class="jn">3042</span>                   <span class="jcm">== NvDsFrameMeta.frame_num</span>
+  <span class="jk">"tBbox.left"</span>       <span class="jn">412.3</span> ... <span class="jn">904.1</span>                 <span class="jcm">tracker bbox via m_unClippedRect</span>
+  <span class="jk">"tBbox.top"</span>        <span class="jn">218.7</span> ... <span class="jn">493.1</span>
+  <span class="jk">"tBbox.width"</span>      <span class="jn">152.6</span> ... <span class="jn">198.7</span>
+  <span class="jk">"tBbox.height"</span>     <span class="jn">88.1</span>  ... <span class="jn">112.3</span>
+  <span class="jk">"confidence"</span>       <span class="jn">0.44</span> ... <span class="jn">0.91</span>                   <span class="jcm">tracker confidence (not PGIE)</span>
+  <span class="jk">"age"</span>              <span class="jn">3</span> ... <span class="jn">30</span>                          <span class="jcm">frames since track created</span>`;
+
+  function dsSetView(v) {
+    document.getElementById('ds-btn-full').classList.toggle('ds-active', v==='full');
+    document.getElementById('ds-btn-anno').classList.toggle('ds-active', v==='anno');
+    document.getElementById('ds-btn-flat').classList.toggle('ds-active', v==='flat');
+    const content = v==='full' ? DS_FULL : v==='anno' ? DS_ANNO : DS_FLAT;
+    document.getElementById('ds-json-body').innerHTML = '<pre>' + content + '</pre>';
+  }
+
+  dsSetView('full');
+  </script>
+
+  <!-- ── SECTION 12: TERMINATION DETECTION ── -->
+  <div class="section" id="termination">
+    <div class="section-label">Track Lifecycle</div>
+    <h2><span class="num">12</span> Detecting Terminated Tracks</h2>
+
+    <p>
+      <code>NvDsPastFrameObjBatch</code> has no termination flag — it only tells you a track is in
+      shadow phase, not that it has ended. Termination must be <strong>inferred</strong> by
+      cross-referencing both metadata channels across consecutive batches.
+    </p>
+
+    <div class="callout warn">
+      <div class="callout-title">Common Misconception</div>
+      A track appearing in <code>NvDsPastFrameObjBatch</code> does <em>not</em> mean it has terminated.
+      It means the tracker is holding back detections during its shadow phase. The track is still alive —
+      it only terminates when it vanishes from <em>both</em> channels simultaneously.
+    </div>
+
+    <h3>The Two Channels</h3>
+    <div class="two-col">
+      <div class="mini-card">
+        <h4>NvDsObjectMeta (active)</h4>
+        <p>Track is confirmed by the detector this frame. Appears in <code>frame_meta.obj_meta_list</code>. Object is currently visible.</p>
+      </div>
+      <div class="mini-card">
+        <h4>NvDsPastFrameObjBatch (shadow)</h4>
+        <p>Track is in shadow phase — detector lost it but tracker is still predicting. No longer in active meta. Still alive, awaiting re-detection.</p>
+      </div>
+    </div>
+
+    <h3>Track Lifecycle vs Metadata Presence</h3>
+    <div class="code-wrap">
+      <pre>Batch N-1:   track 42 in NvDsObjectMeta        <span class="cm">→ known_ids has (0, 42)</span>
+Batch N:     track 42 in NvDsPastFrameObjBatch  <span class="cm">→ still_alive has (0, 42) — NOT terminated</span>
+Batch N+1:   track 42 absent from both          <span class="cm">→ terminated = {(0, 42)}  ✓</span></pre>
+    </div>
+
+    <h3>Implementation</h3>
+
+    <div class="code-wrap">
+      <div class="code-label">Python · collect active ids</div>
+      <pre><span class="kw">def</span> <span class="fn">get_active_ids</span>(batch_meta):
+    <span class="cm">"""IDs currently confirmed by detector this batch."""</span>
+    active = <span class="nb">set</span>()
+    l_frame = batch_meta.frame_meta_list
+    <span class="kw">while</span> l_frame:
+        frame_meta = pyds.NvDsFrameMeta.cast(l_frame.data)
+        l_obj = frame_meta.obj_meta_list
+        <span class="kw">while</span> l_obj:
+            obj = pyds.NvDsObjectMeta.cast(l_obj.data)
+            active.add((frame_meta.source_id, obj.object_id))
+            l_obj = l_obj.next
+        l_frame = l_frame.next
+    <span class="kw">return</span> active</pre>
+    </div>
+
+    <div class="code-wrap">
+      <div class="code-label">Python · collect shadow ids</div>
+      <pre><span class="kw">def</span> <span class="fn">get_shadow_ids</span>(batch_meta):
+    <span class="cm">"""IDs currently in shadow phase (in NvDsPastFrameObjBatch)."""</span>
+    shadow = <span class="nb">set</span>()
+    l_usr = batch_meta.batch_user_meta_list
+    <span class="kw">while</span> l_usr:
+        <span class="kw">try</span>:
+            usr_meta = pyds.NvDsUserMeta.cast(l_usr.data)
+        <span class="kw">except</span> StopIteration:
+            <span class="kw">break</span>
+        <span class="kw">if</span> (usr_meta.base_meta.meta_type ==
+                pyds.NvDsMetaType.NVDS_TRACKER_PAST_FRAME_META):
+            pf_batch = pyds.NvDsPastFrameObjBatch.cast(usr_meta.user_meta_data)
+            <span class="kw">for</span> s <span class="kw">in</span> <span class="nb">range</span>(pf_batch.numAllocated):
+                stream = pf_batch.list[s]
+                <span class="kw">for</span> o <span class="kw">in</span> <span class="nb">range</span>(stream.numFilled):
+                    obj = stream.list[o]
+                    shadow.add((stream.streamID, obj.uniqueId))
+        <span class="kw">try</span>:
+            l_usr = l_usr.next
+        <span class="kw">except</span> StopIteration:
+            <span class="kw">break</span>
+    <span class="kw">return</span> shadow</pre>
+    </div>
+
+    <div class="code-wrap">
+      <div class="code-label">Python · infer terminations</div>
+      <pre><span class="kw">def</span> <span class="fn">find_terminated</span>(batch_meta, known_ids):
+    <span class="cm">"""
+    known_ids : set of (src_id, object_id) seen in any previous batch.
+    Returns   : set of IDs that just terminated this batch.
+    Mutates known_ids in-place for the next batch.
+    """</span>
+    active      = get_active_ids(batch_meta)
+    shadow      = get_shadow_ids(batch_meta)
+    still_alive = active | shadow
+
+    terminated  = known_ids - still_alive  <span class="cm"># was known, now gone from both</span>
+
+    known_ids.clear()
+    known_ids.update(still_alive)
+
+    <span class="kw">return</span> terminated</pre>
+    </div>
+
+    <div class="code-wrap">
+      <div class="code-label">Python · probe integration</div>
+      <pre>known_ids = <span class="nb">set</span>()  <span class="cm"># persists across batches, lives outside probe</span>
+
+<span class="kw">def</span> <span class="fn">buffer_probe</span>(pad, info, u_data):
+    gst_buffer = info.get_buffer()
+    batch_meta  = pyds.gst_buffer_get_nvds_batch_meta(<span class="nb">hash</span>(gst_buffer))
+
+    terminated = find_terminated(batch_meta, known_ids)
+
+    <span class="kw">for</span> (src_id, oid) <span class="kw">in</span> terminated:
+        key = (src_id, oid)
+        <span class="kw">if</span> key <span class="kw">in</span> object_frame_buffer:
+            flush_and_select(key)  <span class="cm"># now authoritative — track is truly done</span>
+
+    <span class="kw">return</span> Gst.PadProbeReturn.OK</pre>
+    </div>
+
+    <h3>Edge Case: Long Shadow Windows</h3>
+    <p>
+      If <code>maxShadowTrackingAge</code> is large (e.g. 60 frames) a vehicle that exits frame cleanly
+      will sit in shadow phase for up to 2 seconds before termination fires. The timeout flush from
+      Section 06 remains the right safety net — run both in parallel, they complement each other:
+    </p>
+
+    <table>
+      <thead>
+        <tr><th>Mechanism</th><th>When it fires</th><th>Role</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Dual-channel termination</td>
+          <td>Exactly when track vanishes from both channels</td>
+          <td>Authoritative flush — use as primary signal</td>
+        </tr>
+        <tr>
+          <td>Timeout flush (Section 06)</td>
+          <td>After N frames absent from <code>last_seen</code></td>
+          <td>Safety net for EOS, long shadow windows, edge cases</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout tip">
+      <div class="callout-title">Why Not Use outputTerminatedTracks?</div>
+      The tracker config flag <code>outputTerminatedTracks: 1</code> surfaces a termination event,
+      but it requires additional event bus handling and is less portable across DeepStream versions.
+      The dual-channel set-difference approach above works purely from probe metadata with no extra
+      config dependencies.
+    </div>
+  </div>
+
+  <footer>
+    <span>DeepStream 8 · Best Frame Selection Reference</span>
+    <div class="footer-stack">
+      <span class="stack-badge">NvDCF</span>
+      <span class="stack-badge">NvBufSurface</span>
+      <span class="stack-badge">PastFrameObjBatch</span>
+      <span class="stack-badge">pyds</span>
+      <span class="stack-badge">OpenCV</span>
+      <span class="stack-badge">GStreamer</span>
+      <span class="stack-badge">TensorRT</span>
+    </div>
+  </footer>
+
+</div>
+</body>
+</html>

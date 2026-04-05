@@ -1,0 +1,1880 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DeepStream · Metadata Reference & Sample Dataset</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Fira+Code:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+/* ─────────────────────────────────────────────
+   TOKENS
+───────────────────────────────────────────── */
+:root {
+  --bg:         #06080f;
+  --bg1:        #0b0e1a;
+  --bg2:        #0f1322;
+  --bg3:        #141828;
+  --surface:    #1a1f35;
+  --surface2:   #202640;
+  --border:     #252c48;
+  --border2:    #303860;
+
+  /* accent palette */
+  --gold:       #f0c060;
+  --gold-dim:   #8a6c30;
+  --gold-glow:  rgba(240,192,96,0.08);
+  --teal:       #40e0c0;
+  --teal-dim:   #207860;
+  --rose:       #f06080;
+  --violet:     #a080f0;
+  --green:      #60d080;
+  --amber:      #f0a040;
+
+  /* SGIE color coding */
+  --sgie-color: #40e0c0;   /* color classifier */
+  --sgie-lp:    #f0c060;   /* LP detector */
+  --sgie-lpc:   #a080f0;   /* LP classifier */
+
+  --text:       #7888b8;
+  --text-hi:    #c8d4f0;
+  --text-dim:   #3a4468;
+  --mono:       'Fira Code', monospace;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 14px;
+  line-height: 1.7;
+  overflow-x: hidden;
+}
+
+/* ── NOISE TEXTURE ── */
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  opacity: 0.025;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)'/%3E%3C/svg%3E");
+  pointer-events: none; z-index: 0;
+}
+
+.page { position: relative; z-index: 1; }
+
+/* ─────────────────────────────────────────────
+   HEADER
+───────────────────────────────────────────── */
+.site-header {
+  padding: 48px 56px 40px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 24px;
+}
+
+.header-left {}
+
+.eyebrow {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--gold);
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.eyebrow-dot {
+  width: 6px; height: 6px;
+  background: var(--gold);
+  border-radius: 50%;
+  animation: blink 2s ease-in-out infinite;
+}
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
+
+h1 {
+  font-size: clamp(1.8rem, 4vw, 2.8rem);
+  font-weight: 700;
+  color: var(--text-hi);
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+}
+
+h1 span { color: var(--gold); }
+
+.header-sub {
+  font-size: 13px;
+  color: var(--text-dim);
+  font-family: var(--mono);
+  margin-top: 10px;
+}
+
+.pipeline-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 18px;
+}
+
+.pchip {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  padding: 4px 12px;
+  border-radius: 2px;
+  border: 1px solid;
+  text-transform: uppercase;
+}
+
+.pchip.pgie  { color: var(--gold);   border-color: var(--gold-dim);   background: var(--gold-glow); }
+.pchip.trk   { color: var(--text);   border-color: var(--border2);    background: transparent; }
+.pchip.color { color: var(--teal);   border-color: var(--teal-dim);   background: rgba(64,224,192,0.06); }
+.pchip.lp    { color: var(--gold);   border-color: var(--gold-dim);   background: var(--gold-glow); }
+.pchip.lpc   { color: var(--violet); border-color: #604090;           background: rgba(160,128,240,0.06); }
+
+/* ─────────────────────────────────────────────
+   LAYOUT
+───────────────────────────────────────────── */
+.layout {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  min-height: 100vh;
+}
+
+/* ── SIDEBAR ── */
+nav {
+  padding: 32px 20px;
+  border-right: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+
+.nav-section {
+  margin-bottom: 24px;
+}
+
+.nav-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.35em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+nav a {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-dim);
+  text-decoration: none;
+  padding: 5px 0;
+  transition: color 0.15s;
+  line-height: 1.4;
+}
+
+nav a .dot {
+  width: 4px; height: 4px;
+  border-radius: 50%;
+  background: var(--border2);
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+
+nav a:hover { color: var(--gold); }
+nav a:hover .dot { background: var(--gold); }
+
+/* ── MAIN ── */
+main {
+  padding: 48px 56px 80px;
+  max-width: 960px;
+}
+
+/* ─────────────────────────────────────────────
+   SECTIONS
+───────────────────────────────────────────── */
+.section {
+  margin-bottom: 64px;
+  animation: fadeup 0.4s ease both;
+}
+
+@keyframes fadeup {
+  from { opacity:0; transform:translateY(12px); }
+  to   { opacity:1; transform:translateY(0); }
+}
+
+.section:nth-child(1) { animation-delay:0.00s }
+.section:nth-child(2) { animation-delay:0.04s }
+.section:nth-child(3) { animation-delay:0.08s }
+.section:nth-child(4) { animation-delay:0.12s }
+.section:nth-child(5) { animation-delay:0.16s }
+.section:nth-child(6) { animation-delay:0.20s }
+.section:nth-child(7) { animation-delay:0.24s }
+.section:nth-child(8) { animation-delay:0.28s }
+
+.sec-header {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  margin-bottom: 22px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.sec-tag {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--gold);
+  background: var(--gold-glow);
+  border: 1px solid var(--gold-dim);
+  border-radius: 2px;
+  padding: 2px 8px;
+  flex-shrink: 0;
+}
+
+h2 {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--text-hi);
+  letter-spacing: -0.02em;
+}
+
+h3 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-hi);
+  margin: 28px 0 10px;
+  font-family: var(--mono);
+  letter-spacing: 0.04em;
+}
+
+h3::before { content: '▸ '; color: var(--gold); }
+
+p {
+  font-size: 13.5px;
+  color: var(--text);
+  margin-bottom: 12px;
+  font-weight: 400;
+}
+
+strong { color: var(--text-hi); font-weight: 600; }
+
+/* ─────────────────────────────────────────────
+   CODE BLOCKS
+───────────────────────────────────────────── */
+.code-block {
+  margin: 14px 0 20px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.code-top {
+  background: var(--bg3);
+  border-bottom: 1px solid var(--border);
+  padding: 7px 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.code-name {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--text-dim);
+  text-transform: uppercase;
+}
+
+.code-badge {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 2px;
+  border: 1px solid var(--border2);
+  color: var(--text-dim);
+}
+
+pre {
+  background: var(--bg1);
+  padding: 18px 20px;
+  overflow-x: auto;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.8;
+  color: var(--text);
+  tab-size: 2;
+}
+
+/* tokens */
+.kw  { color: #80a0ff; font-style: italic; }
+.fn  { color: #f0c060; }
+.st  { color: #80d090; }
+.cm  { color: #2a3458; font-style: italic; }
+.nb  { color: #f09060; }
+.num { color: #d0a070; }
+.op  { color: var(--teal); }
+.k2  { color: var(--violet); }
+
+/* ─────────────────────────────────────────────
+   METADATA TREE VISUALISER
+───────────────────────────────────────────── */
+.tree-wrap {
+  background: var(--bg1);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 24px 28px;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 2.0;
+  overflow-x: auto;
+  margin: 14px 0 20px;
+}
+
+.t-batch   { color: var(--gold); font-weight: 500; }
+.t-frame   { color: var(--teal); }
+.t-obj     { color: var(--text-hi); }
+.t-cls     { color: var(--sgie-color); }
+.t-lp      { color: var(--sgie-lp); }
+.t-lpc     { color: var(--sgie-lpc); }
+.t-user    { color: var(--violet); }
+.t-tensor  { color: var(--rose); }
+.t-field   { color: var(--text-dim); }
+.t-val     { color: #80d090; }
+.t-cm      { color: #2a3458; font-style: italic; }
+.t-line    { color: #1e2840; }
+
+/* ─────────────────────────────────────────────
+   SAMPLE DATASET EXPLORER
+───────────────────────────────────────────── */
+.explorer {
+  background: var(--bg1);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  margin: 16px 0 24px;
+}
+
+.explorer-toolbar {
+  background: var(--bg3);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.exp-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-right: 8px;
+}
+
+.filter-btn {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  padding: 4px 12px;
+  border-radius: 2px;
+  border: 1px solid var(--border2);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: all 0.15s;
+  text-transform: uppercase;
+}
+
+.filter-btn:hover { border-color: var(--gold); color: var(--gold); }
+.filter-btn.active { background: var(--gold-glow); border-color: var(--gold); color: var(--gold); }
+.filter-btn.color-active { background: rgba(64,224,192,0.08); border-color: var(--teal-dim); color: var(--teal); }
+.filter-btn.lp-active    { background: var(--gold-glow); border-color: var(--gold-dim); color: var(--gold); }
+.filter-btn.lpc-active   { background: rgba(160,128,240,0.08); border-color: #604090; color: var(--violet); }
+
+.obj-list {
+  max-height: 480px;
+  overflow-y: auto;
+}
+
+.obj-row {
+  border-bottom: 1px solid var(--border);
+  transition: background 0.1s;
+}
+
+.obj-row:last-child { border-bottom: none; }
+
+.obj-row-header {
+  display: grid;
+  grid-template-columns: 36px 80px 80px 90px 90px 1fr auto;
+  align-items: center;
+  padding: 10px 16px;
+  cursor: pointer;
+  gap: 8px;
+  transition: background 0.1s;
+}
+
+.obj-row-header:hover { background: rgba(240,192,96,0.03); }
+
+.obj-expand-icon {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  transition: transform 0.2s;
+  user-select: none;
+}
+
+.obj-row.open .obj-expand-icon { transform: rotate(90deg); color: var(--gold); }
+
+.obj-id {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--gold);
+  font-weight: 500;
+}
+
+.obj-class {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-hi);
+}
+
+.obj-conf {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text);
+}
+
+.obj-bbox {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.obj-color-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--teal);
+  border: 1px solid var(--teal-dim);
+  background: rgba(64,224,192,0.06);
+  padding: 2px 8px;
+  border-radius: 2px;
+}
+
+.obj-color-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.2);
+}
+
+.obj-lp-badge {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--gold);
+  border: 1px solid var(--gold-dim);
+  background: var(--gold-glow);
+  padding: 2px 8px;
+  border-radius: 2px;
+  letter-spacing: 0.08em;
+}
+
+.obj-no-lp {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.obj-detail {
+  display: none;
+  background: var(--bg2);
+  border-top: 1px solid var(--border);
+  padding: 0;
+}
+
+.obj-row.open .obj-detail { display: block; }
+
+.detail-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+}
+
+.dtab {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 8px 16px;
+  cursor: pointer;
+  border-right: 1px solid var(--border);
+  color: var(--text-dim);
+  transition: all 0.15s;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+
+.dtab:hover { color: var(--text-hi); }
+.dtab.active { color: var(--gold); border-bottom-color: var(--gold); background: rgba(240,192,96,0.04); }
+
+.dtab-pane { display: none; padding: 16px 20px; }
+.dtab-pane.active { display: block; }
+
+/* Detail field rows */
+.dfield {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+  font-size: 12px;
+}
+
+.dfield:last-child { border-bottom: none; }
+
+.dfield-key {
+  font-family: var(--mono);
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.dfield-val {
+  font-family: var(--mono);
+  color: var(--text-hi);
+  font-size: 11px;
+  word-break: break-all;
+}
+
+.dfield-val.green  { color: var(--green); }
+.dfield-val.teal   { color: var(--teal); }
+.dfield-val.gold   { color: var(--gold); }
+.dfield-val.violet { color: var(--violet); }
+.dfield-val.rose   { color: var(--rose); }
+.dfield-val.amber  { color: var(--amber); }
+
+/* ── TENSOR HEATMAP ── */
+.tensor-heatmap {
+  margin: 12px 0 0;
+}
+
+.tensor-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+}
+
+.heatmap-row {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.hm-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.hm-bar-wrap {
+  width: 36px;
+  height: 60px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  overflow: hidden;
+}
+
+.hm-bar {
+  width: 100%;
+  border-radius: 1px 1px 0 0;
+  transition: height 0.5s ease;
+}
+
+.hm-val {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text-dim);
+}
+
+.hm-class {
+  font-family: var(--mono);
+  font-size: 8px;
+  color: var(--text-dim);
+  text-align: center;
+  max-width: 36px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── LP TENSOR HEATMAP (binary style) ── */
+.lp-tensor-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin: 8px 0;
+}
+
+.lp-cell {
+  font-family: var(--mono);
+  font-size: 9px;
+  padding: 3px 5px;
+  border-radius: 2px;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  background: var(--bg3);
+  min-width: 28px;
+  text-align: center;
+}
+
+.lp-cell.winner {
+  border-color: var(--gold-dim);
+  background: var(--gold-glow);
+  color: var(--gold);
+  font-weight: 500;
+}
+
+/* ─────────────────────────────────────────────
+   HIERARCHY DIAGRAM
+───────────────────────────────────────────── */
+.hier-diagram {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  background: var(--bg1);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  margin: 14px 0 20px;
+}
+
+.hier-row {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.1s;
+}
+
+.hier-row:last-child { border-bottom: none; }
+.hier-row:hover { background: rgba(240,192,96,0.02); }
+
+.hier-indent {
+  display: flex;
+  align-items: center;
+}
+
+.hier-indent-block {
+  width: 28px;
+  border-right: 1px solid var(--border);
+  background: rgba(255,255,255,0.01);
+  position: relative;
+}
+
+.hier-node {
+  padding: 10px 16px;
+  flex: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.hier-type {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.hier-desc {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.hier-badge {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 2px;
+  border: 1px solid;
+  white-space: nowrap;
+}
+
+/* ─────────────────────────────────────────────
+   CALLOUTS
+───────────────────────────────────────────── */
+.note, .warn, .tip, .danger {
+  padding: 12px 16px 12px 44px;
+  border-radius: 3px;
+  margin: 14px 0;
+  font-size: 13px;
+  border: 1px solid;
+  position: relative;
+  font-weight: 400;
+}
+
+.note   { background: rgba(64,224,192,0.05); border-color: rgba(64,224,192,0.2); color: #60b0a0; }
+.warn   { background: rgba(240,192,96,0.05); border-color: rgba(240,192,96,0.2); color: #a08040; }
+.tip    { background: rgba(96,208,128,0.05); border-color: rgba(96,208,128,0.2); color: #60a070; }
+.danger { background: rgba(240,96,128,0.05); border-color: rgba(240,96,128,0.2); color: #b06070; }
+
+.note::before   { content:'ℹ'; position:absolute; left:14px; top:12px; color:var(--teal); font-size:14px; }
+.warn::before   { content:'⚠'; position:absolute; left:14px; top:12px; color:var(--gold); font-size:14px; }
+.tip::before    { content:'✦'; position:absolute; left:14px; top:12px; color:var(--green); font-size:14px; }
+.danger::before { content:'✖'; position:absolute; left:14px; top:12px; color:var(--rose); font-size:14px; }
+
+.callout-title {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  font-weight: 500;
+  display: block;
+  margin-bottom: 3px;
+}
+
+.note .callout-title   { color: var(--teal); }
+.warn .callout-title   { color: var(--gold); }
+.tip .callout-title    { color: var(--green); }
+.danger .callout-title { color: var(--rose); }
+
+/* ─────────────────────────────────────────────
+   TABLES
+───────────────────────────────────────────── */
+.tbl { overflow-x: auto; margin: 12px 0 20px; }
+table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+
+th {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  padding: 9px 13px;
+  text-align: left;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--gold);
+  font-weight: 400;
+}
+
+td {
+  border: 1px solid var(--border);
+  padding: 9px 13px;
+  color: var(--text);
+  vertical-align: top;
+  font-size: 12.5px;
+}
+
+td:first-child {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-hi);
+  background: var(--bg2);
+  white-space: nowrap;
+}
+
+tr:hover td { background: rgba(240,192,96,0.02); }
+tr:hover td:first-child { background: rgba(240,192,96,0.04); }
+
+code {
+  font-family: var(--mono);
+  font-size: 11px;
+  background: rgba(240,192,96,0.07);
+  border: 1px solid rgba(240,192,96,0.15);
+  border-radius: 2px;
+  padding: 1px 5px;
+  color: var(--gold);
+}
+
+ul { padding-left: 18px; color: var(--text); font-size: 13.5px; margin-bottom: 12px; }
+ul li { margin-bottom: 5px; }
+ul li::marker { color: var(--gold-dim); }
+
+/* ─────────────────────────────────────────────
+   FOOTER
+───────────────────────────────────────────── */
+footer {
+  border-top: 1px solid var(--border);
+  padding: 24px 56px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.footer-left {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  line-height: 1.8;
+}
+
+.footer-badges {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.fbadge {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  border: 1px solid var(--border2);
+  padding: 3px 9px;
+  border-radius: 2px;
+}
+
+@media (max-width:860px) {
+  .layout { grid-template-columns: 1fr; }
+  nav { display: none; }
+  main { padding: 24px 20px 60px; }
+  .site-header { padding: 32px 20px 28px; }
+  footer { padding: 20px; }
+  .obj-row-header { grid-template-columns: 36px 70px 70px 1fr auto; }
+  .obj-bbox, .obj-conf { display: none; }
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+<!-- ── HEADER ── -->
+<header class="site-header">
+  <div class="header-left">
+    <div class="eyebrow"><span class="eyebrow-dot"></span>DeepStream 8 · Vehicle Intelligence Pipeline</div>
+    <h1>NvDs <span>Metadata</span><br>Reference</h1>
+    <div class="header-sub">// NvDsBatchMeta → NvDsFrameMeta → NvDsObjectMeta → SGIE Metadata</div>
+    <div class="pipeline-chips">
+      <span class="pchip pgie">PGIE · vehicle detector · gie-id=1</span>
+      <span class="pchip trk">NvDCF tracker</span>
+      <span class="pchip color">SGIE-2 · color classifier · 15 classes</span>
+      <span class="pchip lp">SGIE-3 · LP detector</span>
+      <span class="pchip lpc">SGIE-4 · LP classifier</span>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+
+<!-- ── SIDEBAR NAV ── -->
+<nav>
+  <div class="nav-section">
+    <div class="nav-label">Structure</div>
+    <a href="#overview"><span class="dot"></span>Hierarchy Overview</a>
+    <a href="#batch-meta"><span class="dot"></span>NvDsBatchMeta</a>
+    <a href="#frame-meta"><span class="dot"></span>NvDsFrameMeta</a>
+    <a href="#obj-meta"><span class="dot"></span>NvDsObjectMeta</a>
+  </div>
+  <div class="nav-section">
+    <div class="nav-label">SGIE Metadata</div>
+    <a href="#classifier-meta"><span class="dot"></span>NvDsClassifierMeta</a>
+    <a href="#user-meta"><span class="dot"></span>NvDsUserMeta</a>
+    <a href="#tensor-meta"><span class="dot"></span>NvDsInferTensorMeta</a>
+  </div>
+  <div class="nav-section">
+    <div class="nav-label">Sample Dataset</div>
+    <a href="#sample-dataset"><span class="dot"></span>Interactive Explorer</a>
+    <a href="#probe-code"><span class="dot"></span>Probe Code</a>
+  </div>
+  <div class="nav-section">
+    <div class="nav-label">Reference</div>
+    <a href="#sgie-table"><span class="dot"></span>SGIE Config Table</a>
+    <a href="#access-patterns"><span class="dot"></span>Access Patterns</a>
+  </div>
+</nav>
+
+<!-- ── MAIN ── -->
+<main>
+
+<!-- ── SECTION: OVERVIEW ── -->
+<div class="section" id="overview">
+  <div class="sec-header">
+    <span class="sec-tag">// 01</span>
+    <h2>Full Metadata Hierarchy</h2>
+  </div>
+  <p>
+    Every <code>GstBuffer</code> in DeepStream carries a <code>NvDsBatchMeta</code> — a tree structure
+    that accumulates metadata as the buffer passes through each plugin. The tree deepens with each
+    stage: PGIE adds object bboxes, tracker adds IDs, each SGIE appends classifier or tensor results.
+  </p>
+
+  <div class="hier-diagram">
+
+    <!-- Level 0 -->
+    <div class="hier-row">
+      <div class="hier-node">
+        <span class="hier-type t-batch">NvDsBatchMeta</span>
+        <span class="hier-desc">one per GstBuffer · attached to batch</span>
+        <span class="hier-badge" style="color:var(--gold);border-color:var(--gold-dim);background:var(--gold-glow)">GstBuffer</span>
+      </div>
+    </div>
+
+    <!-- Level 1: frame -->
+    <div class="hier-row">
+      <div class="hier-indent"><div class="hier-indent-block"></div></div>
+      <div class="hier-node">
+        <span class="hier-type t-frame">NvDsFrameMeta</span>
+        <span class="hier-desc">one per source stream · frame_num, source_id, surface_ref</span>
+        <span class="hier-badge" style="color:var(--teal);border-color:var(--teal-dim)">frame_meta_list</span>
+      </div>
+    </div>
+
+    <!-- Level 2: object -->
+    <div class="hier-row">
+      <div class="hier-indent">
+        <div class="hier-indent-block"></div>
+        <div class="hier-indent-block"></div>
+      </div>
+      <div class="hier-node">
+        <span class="hier-type t-obj">NvDsObjectMeta</span>
+        <span class="hier-desc">one per detected object · bbox, class_id, confidence, object_id</span>
+        <span class="hier-badge" style="color:var(--text-hi);border-color:var(--border2)">obj_meta_list</span>
+      </div>
+    </div>
+
+    <!-- Level 3a: classifier meta -->
+    <div class="hier-row">
+      <div class="hier-indent">
+        <div class="hier-indent-block"></div>
+        <div class="hier-indent-block"></div>
+        <div class="hier-indent-block"></div>
+      </div>
+      <div class="hier-node">
+        <span class="hier-type t-cls">NvDsClassifierMeta</span>
+        <span class="hier-desc">top-1 label + prob from SGIE · one per SGIE that ran on this object</span>
+        <span class="hier-badge" style="color:var(--sgie-color);border-color:var(--teal-dim)">classifier_meta_list</span>
+      </div>
+    </div>
+
+    <!-- Level 4: label info -->
+    <div class="hier-row">
+      <div class="hier-indent">
+        <div class="hier-indent-block"></div>
+        <div class="hier-indent-block"></div>
+        <div class="hier-indent-block"></div>
+        <div class="hier-indent-block"></div>
+      </div>
+      <div class="hier-node">
+        <span class="hier-type" style="color:#60d080">NvDsLabelInfo</span>
+        <span class="hier-desc">result_label (str) · result_prob (float) · label_id (int)</span>
+        <span class="hier-badge" style="color:#60d080;border-color:#306040">label_info_list</span>
+      </div>
+    </div>
+
+    <!-- Level 3b: user meta -->
+    <div class="hier-row">
+      <div class="hier-indent">
+        <div class="hier-indent-block"></div>
+        <div class="hier-indent-block"></div>
+        <div class="hier-indent-block"></div>
+      </div>
+      <div class="hier-node">
+        <span class="hier-type t-user">NvDsUserMeta</span>
+        <span class="hier-desc">container for raw tensor output · meta_type = NVDSINFER_TENSOR_OUTPUT_META</span>
+        <span class="hier-badge" style="color:var(--violet);border-color:#604090">obj_user_meta_list</span>
+      </div>
+    </div>
+
+    <!-- Level 4: tensor meta -->
+    <div class="hier-row">
+      <div class="hier-indent">
+        <div class="hier-indent-block"></div>
+        <div class="hier-indent-block"></div>
+        <div class="hier-indent-block"></div>
+        <div class="hier-indent-block"></div>
+      </div>
+      <div class="hier-node">
+        <span class="hier-type t-tensor">NvDsInferTensorMeta</span>
+        <span class="hier-desc">raw output layers · unique_id · output_layers_info[i].buffer (void*)</span>
+        <span class="hier-badge" style="color:var(--rose);border-color:#804050">user_meta_data</span>
+      </div>
+    </div>
+
+    <!-- Level 3c: past frame -->
+    <div class="hier-row">
+      <div class="hier-indent">
+        <div class="hier-indent-block"></div>
+        <div class="hier-indent-block"></div>
+      </div>
+      <div class="hier-node">
+        <span class="hier-type" style="color:var(--amber)">NvDsPastFrameObjBatch</span>
+        <span class="hier-desc">terminated track history · bbox + confidence per past frame</span>
+        <span class="hier-badge" style="color:var(--amber);border-color:#806020">past_frame_obj_batch</span>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="note">
+    <span class="callout-title">Key distinction</span>
+    <code>classifier_meta_list</code> is populated when <code>output-tensor-meta=0</code> (default).
+    <code>obj_user_meta_list</code> is populated when <code>output-tensor-meta=1</code>.
+    The two are mutually exclusive per SGIE instance.
+  </div>
+</div>
+
+<!-- ── SECTION: BATCH META ── -->
+<div class="section" id="batch-meta">
+  <div class="sec-header">
+    <span class="sec-tag">// 02</span>
+    <h2>NvDsBatchMeta</h2>
+  </div>
+  <p>The root of the metadata tree. One per <code>GstBuffer</code> regardless of how many source streams feed into it.</p>
+
+  <div class="tbl">
+    <table>
+      <thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td>frame_meta_list</td><td>GList*</td><td>Linked list of NvDsFrameMeta — one per source in the batch</td></tr>
+        <tr><td>batch_user_meta_list</td><td>GList*</td><td>Batch-level user metadata (not per-frame)</td></tr>
+        <tr><td>past_frame_obj_batch</td><td>NvDsPastFrameObjBatch*</td><td>Track termination data from NvDCF when pastFrame=1</td></tr>
+        <tr><td>max_frames_in_batch</td><td>uint32</td><td>Max frames this batch can hold (set by nvstreammux)</td></tr>
+        <tr><td>num_frames_in_batch</td><td>uint32</td><td>Actual frames present in this buffer</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="code-block">
+    <div class="code-top"><span class="code-name">access pattern</span><span class="code-badge">Python · pyds</span></div>
+    <pre><span class="kw">def</span> <span class="fn">probe</span>(pad, info, u_data):
+    gst_buffer = info.get_buffer()
+    batch_meta  = pyds.gst_buffer_get_nvds_batch_meta(<span class="nb">hash</span>(gst_buffer))
+
+    l_frame = batch_meta.frame_meta_list
+    <span class="kw">while</span> l_frame <span class="kw">is not</span> <span class="nb">None</span>:
+        frame_meta = pyds.NvDsFrameMeta.cast(l_frame.data)
+        <span class="cm"># ... process frame ...</span>
+        l_frame = l_frame.next</pre>
+  </div>
+</div>
+
+<!-- ── SECTION: FRAME META ── -->
+<div class="section" id="frame-meta">
+  <div class="sec-header">
+    <span class="sec-tag">// 03</span>
+    <h2>NvDsFrameMeta</h2>
+  </div>
+  <p>One per source stream per batch. Carries frame-level metadata and the list of all objects detected in that frame.</p>
+
+  <div class="tbl">
+    <table>
+      <thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td>pad_index</td><td>uint32</td><td>nvstreammux sink pad index for this source</td></tr>
+        <tr><td>batch_id</td><td>uint32</td><td>Position in batch — used to get NvBufSurface for this frame</td></tr>
+        <tr><td>frame_num</td><td>uint64</td><td>Monotonically increasing frame counter per source</td></tr>
+        <tr><td>source_id</td><td>uint32</td><td>Source stream identifier — use with object_id for unique keys</td></tr>
+        <tr><td>source_frame_width</td><td>uint32</td><td>Frame width in pixels</td></tr>
+        <tr><td>source_frame_height</td><td>uint32</td><td>Frame height in pixels</td></tr>
+        <tr><td>num_obj_meta</td><td>uint32</td><td>Number of NvDsObjectMeta entries on this frame</td></tr>
+        <tr><td>obj_meta_list</td><td>GList*</td><td>Linked list of NvDsObjectMeta</td></tr>
+        <tr><td>frame_user_meta_list</td><td>GList*</td><td>Frame-level user metadata (custom attach point)</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ── SECTION: OBJECT META ── -->
+<div class="section" id="obj-meta">
+  <div class="sec-header">
+    <span class="sec-tag">// 04</span>
+    <h2>NvDsObjectMeta</h2>
+  </div>
+  <p>
+    The primary per-object metadata struct. Created by the PGIE, enriched by the tracker, and
+    extended by each SGIE that processes this object's crop. All downstream metadata hangs off this node.
+  </p>
+
+  <div class="tbl">
+    <table>
+      <thead><tr><th>Field</th><th>Type</th><th>Set by</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td>class_id</td><td>int</td><td>PGIE</td><td>Detected class index (0=vehicle in your pipeline)</td></tr>
+        <tr><td>object_id</td><td>uint64</td><td>Tracker</td><td>Stable cross-frame identity. UNTRACKED_OBJECT_ID before tracker runs</td></tr>
+        <tr><td>confidence</td><td>float</td><td>PGIE</td><td>Detection confidence score from PGIE</td></tr>
+        <tr><td>tracker_confidence</td><td>float</td><td>NvDCF</td><td>Tracker match confidence. Useful for quality gating</td></tr>
+        <tr><td>rect_params</td><td>NvOSD_RectParams</td><td>PGIE+Tracker</td><td>Bounding box: left, top, width, height (in pixels)</td></tr>
+        <tr><td>text_params</td><td>NvOSD_TextParams</td><td>OSD</td><td>Display label — do not read for classification logic</td></tr>
+        <tr><td>obj_label</td><td>char[128]</td><td>PGIE</td><td>Class label string (e.g. "vehicle")</td></tr>
+        <tr><td>classifier_meta_list</td><td>GList*</td><td>SGIE (label mode)</td><td>NvDsClassifierMeta entries — one per SGIE (output-tensor-meta=0)</td></tr>
+        <tr><td>obj_user_meta_list</td><td>GList*</td><td>SGIE (tensor mode)</td><td>NvDsUserMeta wrapping NvDsInferTensorMeta (output-tensor-meta=1)</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ── SECTION: CLASSIFIER META ── -->
+<div class="section" id="classifier-meta">
+  <div class="sec-header">
+    <span class="sec-tag">// 05</span>
+    <h2>NvDsClassifierMeta · NvDsLabelInfo</h2>
+  </div>
+  <p>
+    Produced by SGIEs running with <code>output-tensor-meta=0</code>. nvinfer internally runs argmax
+    and attaches the winning label + probability. Multiple entries appear on <code>classifier_meta_list</code>
+    — one per SGIE that processed this object.
+  </p>
+
+  <div class="tbl">
+    <table>
+      <thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td>unique_component_id</td><td>uint32</td><td>Matches <code>gie-unique-id</code> in the SGIE config. Use to identify which SGIE produced this</td></tr>
+        <tr><td>num_labels</td><td>uint32</td><td>Number of classification heads (usually 1)</td></tr>
+        <tr><td>label_info_list</td><td>GList*</td><td>Linked list of NvDsLabelInfo</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="tbl">
+    <table>
+      <thead><tr><th>NvDsLabelInfo field</th><th>Type</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td>result_label</td><td>char[64]</td><td>Winning class label string e.g. "silver"</td></tr>
+        <tr><td>result_prob</td><td>float</td><td>Softmax probability of the winning class</td></tr>
+        <tr><td>label_id</td><td>int</td><td>Class index corresponding to result_label</td></tr>
+        <tr><td>result_class_id</td><td>int</td><td>Same as label_id in most configurations</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="code-block">
+    <div class="code-top"><span class="code-name">read classifier result for SGIE-2 (color)</span><span class="code-badge">Python</span></div>
+    <pre><span class="kw">def</span> <span class="fn">get_color_label</span>(obj_meta, sgie_uid=<span class="num">2</span>):
+    l_cls = obj_meta.classifier_meta_list
+    <span class="kw">while</span> l_cls:
+        cls_meta = pyds.NvDsClassifierMeta.cast(l_cls.data)
+        <span class="kw">if</span> cls_meta.unique_component_id == sgie_uid:
+            l_lbl = cls_meta.label_info_list
+            <span class="kw">while</span> l_lbl:
+                lbl = pyds.NvDsLabelInfo.cast(l_lbl.data)
+                <span class="kw">return</span> lbl.result_label, lbl.result_prob
+                l_lbl = l_lbl.next
+        l_cls = l_cls.next
+    <span class="kw">return</span> <span class="nb">None</span>, <span class="num">0.0</span></pre>
+  </div>
+</div>
+
+<!-- ── SECTION: USER META ── -->
+<div class="section" id="user-meta">
+  <div class="sec-header">
+    <span class="sec-tag">// 06</span>
+    <h2>NvDsUserMeta · Tensor Output Path</h2>
+  </div>
+  <p>
+    When <code>output-tensor-meta=1</code> is set, nvinfer wraps a <code>NvDsInferTensorMeta</code>
+    inside a <code>NvDsUserMeta</code> and attaches it to <code>obj_user_meta_list</code>.
+    The <code>meta_type</code> field distinguishes it from any other user metadata on the same list.
+  </p>
+
+  <div class="tbl">
+    <table>
+      <thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td>base_meta.meta_type</td><td>NvDsMetaType</td><td>Must equal <code>NVDSINFER_TENSOR_OUTPUT_META</code> to identify tensor payloads</td></tr>
+        <tr><td>user_meta_data</td><td>void*</td><td>Cast to NvDsInferTensorMeta via <code>pyds.NvDsInferTensorMeta.cast()</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ── SECTION: TENSOR META ── -->
+<div class="section" id="tensor-meta">
+  <div class="sec-header">
+    <span class="sec-tag">// 07</span>
+    <h2>NvDsInferTensorMeta</h2>
+  </div>
+  <p>
+    Carries the raw output tensor buffer from the inference engine. For a classifier with 15 color
+    classes the buffer is a <code>float32[15]</code> — the full softmax probability vector.
+    For the LP detector it is the raw detection output tensor before decode/NMS.
+  </p>
+
+  <div class="tbl">
+    <table>
+      <thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td>unique_id</td><td>uint32</td><td>Matches <code>gie-unique-id</code> — use to identify which SGIE produced this tensor</td></tr>
+        <tr><td>num_output_layers</td><td>uint32</td><td>Number of output layers (1 for classifier, may be 3 for YOLO detector)</td></tr>
+        <tr><td>output_layers_info</td><td>NvDsInferLayerInfo*</td><td>Array of layer descriptors</td></tr>
+        <tr><td>out_buf_ptrs_host</td><td>void**</td><td>Host (CPU) memory pointers — use when buffer is already on CPU</td></tr>
+        <tr><td>out_buf_ptrs_dev</td><td>void**</td><td>Device (GPU) memory pointers — requires cudaMemcpy to read on CPU</td></tr>
+        <tr><td>gpu_id</td><td>int</td><td>GPU index this tensor was produced on</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="tbl">
+    <table>
+      <thead><tr><th>NvDsInferLayerInfo field</th><th>Type</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td>layerName</td><td>char*</td><td>Output layer name from the ONNX graph (e.g. "output0")</td></tr>
+        <tr><td>dims.numDims</td><td>int</td><td>Number of dimensions (1 for flat vector, 2 if batch dim included)</td></tr>
+        <tr><td>dims.d[i]</td><td>int</td><td>Size of dimension i — product gives total element count</td></tr>
+        <tr><td>dataType</td><td>NvDsInferDataType</td><td>FLOAT (0), HALF (1), INT8 (2), INT32 (3)</td></tr>
+        <tr><td>buffer</td><td>void*</td><td>Raw float pointer — valid only inside the probe callback</td></tr>
+        <tr><td>inferDims</td><td>NvDsInferDims</td><td>Inference input dims for reference</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="code-block">
+    <div class="code-top"><span class="code-name">extract raw tensor — generic</span><span class="code-badge">Python · ctypes</span></div>
+    <pre><span class="kw">import</span> ctypes, numpy <span class="kw">as</span> np
+
+<span class="kw">def</span> <span class="fn">extract_tensor</span>(obj_meta, sgie_uid: <span class="nb">int</span>, n_classes: <span class="nb">int</span>):
+    l_user = obj_meta.obj_user_meta_list
+    <span class="kw">while</span> l_user:
+        user_meta = pyds.NvDsUserMeta.cast(l_user.data)
+        <span class="kw">if</span> user_meta.base_meta.meta_type != \
+                pyds.NvDsMetaType.NVDSINFER_TENSOR_OUTPUT_META:
+            l_user = l_user.next; <span class="kw">continue</span>
+
+        tmeta = pyds.NvDsInferTensorMeta.cast(user_meta.user_meta_data)
+        <span class="kw">if</span> tmeta.unique_id != sgie_uid:
+            l_user = l_user.next; <span class="kw">continue</span>
+
+        <span class="kw">for</span> i <span class="kw">in</span> <span class="nb">range</span>(tmeta.num_output_layers):
+            layer = pyds.get_nvds_LayerInfo(tmeta, i)
+            total = <span class="num">1</span>
+            <span class="kw">for</span> d <span class="kw">in</span> <span class="nb">range</span>(layer.dims.numDims):
+                total *= layer.dims.d[d]
+            <span class="kw">if</span> total != n_classes: <span class="kw">continue</span>
+
+            ptr   = ctypes.cast(layer.buffer,
+                                ctypes.POINTER(ctypes.c_float))
+            probs = np.ctypeslib.as_array(ptr, shape=(n_classes,)).copy()
+            <span class="kw">return</span> probs   <span class="cm"># .copy() is non-negotiable</span>
+        l_user = l_user.next
+    <span class="kw">return</span> <span class="nb">None</span></pre>
+  </div>
+
+  <div class="danger">
+    <span class="callout-title">Buffer Lifetime</span>
+    <code>layer.buffer</code> is owned by nvinfer and freed immediately after the probe callback returns.
+    Always call <code>.copy()</code>. Never store the raw ctypes pointer or <code>np.ctypeslib.as_array</code>
+    view without copying.
+  </div>
+</div>
+
+<!-- ── SECTION: SAMPLE DATASET ── -->
+<div class="section" id="sample-dataset">
+  <div class="sec-header">
+    <span class="sec-tag">// 08</span>
+    <h2>Interactive Sample Dataset</h2>
+  </div>
+  <p>
+    Simulated output from one frame of the pipeline — 5 tracked vehicles with color classification,
+    LP detection, and LP character classification results. Click any row to inspect the full metadata tree.
+    Use the tabs to switch between Object Meta, Classifier Meta (label mode), and Tensor Meta (raw mode).
+  </p>
+
+  <div class="explorer">
+    <div class="explorer-toolbar">
+      <span class="exp-label">Filter:</span>
+      <button class="filter-btn active" onclick="filterObjs('all', this)">All Objects</button>
+      <button class="filter-btn" onclick="filterObjs('has_lp', this)">Has License Plate</button>
+      <button class="filter-btn" onclick="filterObjs('no_lp', this)">No LP Detected</button>
+    </div>
+
+    <!-- Column headers -->
+    <div style="display:grid;grid-template-columns:36px 80px 80px 90px 90px 1fr auto;gap:8px;padding:8px 16px;border-bottom:1px solid var(--border);background:var(--bg3)">
+      <span style="font-family:var(--mono);font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--text-dim)"></span>
+      <span style="font-family:var(--mono);font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--text-dim)">OBJ ID</span>
+      <span style="font-family:var(--mono);font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--text-dim)">CLASS</span>
+      <span style="font-family:var(--mono);font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--text-dim)">CONF</span>
+      <span style="font-family:var(--mono);font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--text-dim)">BBOX</span>
+      <span style="font-family:var(--mono);font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--text-dim)">COLOR</span>
+      <span style="font-family:var(--mono);font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--text-dim)">LP</span>
+    </div>
+
+    <div class="obj-list" id="objList"></div>
+  </div>
+
+  <div class="note">
+    <span class="callout-title">About This Sample</span>
+    Frame #2847 · Source 0 · 1920×1080 · 5 vehicles detected · NvDCF tracking active.
+    SGIE-2 (color, 15 classes) ran on all 5. SGIE-3 (LP detector) ran on all 5 — 3 plates found.
+    SGIE-4 (LP classifier) ran on the 3 objects where SGIE-3 found a plate.
+  </div>
+</div>
+
+<!-- ── SECTION: PROBE CODE ── -->
+<div class="section" id="probe-code">
+  <div class="sec-header">
+    <span class="sec-tag">// 09</span>
+    <h2>Full Probe — Reading All Three SGIEs</h2>
+  </div>
+
+  <div class="code-block">
+    <div class="code-top"><span class="code-name">multi_sgie_probe.py</span><span class="code-badge">Python · pyds</span></div>
+    <pre><span class="kw">import</span> pyds, ctypes, numpy <span class="kw">as</span> np
+<span class="kw">from</span> collections <span class="kw">import</span> defaultdict
+
+<span class="cm"># ── SGIE registry ────────────────────────────────────────────────</span>
+COLOR_SGIE_UID  = <span class="num">2</span>   <span class="cm"># color classifier,  15 classes</span>
+LP_DET_SGIE_UID = <span class="num">3</span>   <span class="cm"># LP detector,        network-type=0</span>
+LP_CLS_SGIE_UID = <span class="num">4</span>   <span class="cm"># LP char classifier, network-type=1</span>
+
+N_COLOR_CLASSES = <span class="num">15</span>
+LP_CHARS        = <span class="st">"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"</span>
+N_LP_CHARS      = <span class="nb">len</span>(LP_CHARS)   <span class="cm"># 36</span>
+
+COLOR_LABELS = [
+    <span class="st">"black"</span>, <span class="st">"white"</span>, <span class="st">"silver"</span>, <span class="st">"gray"</span>, <span class="st">"red"</span>, <span class="st">"blue"</span>,
+    <span class="st">"green"</span>, <span class="st">"yellow"</span>, <span class="st">"orange"</span>, <span class="st">"brown"</span>, <span class="st">"purple"</span>,
+    <span class="st">"beige"</span>, <span class="st">"dark_blue"</span>, <span class="st">"dark_green"</span>, <span class="st">"maroon"</span>
+]
+
+<span class="cm"># ── Tensor extraction (generic) ───────────────────────────────────</span>
+<span class="kw">def</span> <span class="fn">extract_tensor</span>(obj_meta, uid, n):
+    l = obj_meta.obj_user_meta_list
+    <span class="kw">while</span> l:
+        um = pyds.NvDsUserMeta.cast(l.data)
+        <span class="kw">if</span> um.base_meta.meta_type == \
+                pyds.NvDsMetaType.NVDSINFER_TENSOR_OUTPUT_META:
+            tm = pyds.NvDsInferTensorMeta.cast(um.user_meta_data)
+            <span class="kw">if</span> tm.unique_id == uid:
+                <span class="kw">for</span> i <span class="kw">in</span> <span class="nb">range</span>(tm.num_output_layers):
+                    layer = pyds.get_nvds_LayerInfo(tm, i)
+                    total = <span class="num">1</span>
+                    <span class="kw">for</span> d <span class="kw">in</span> <span class="nb">range</span>(layer.dims.numDims):
+                        total *= layer.dims.d[d]
+                    <span class="kw">if</span> total == n:
+                        ptr = ctypes.cast(layer.buffer,
+                              ctypes.POINTER(ctypes.c_float))
+                        <span class="kw">return</span> np.ctypeslib.as_array(
+                                   ptr, shape=(n,)).copy()
+        l = l.next
+    <span class="kw">return</span> <span class="nb">None</span>
+
+<span class="cm"># ── Label-mode reader (NvDsClassifierMeta) ───────────────────────</span>
+<span class="kw">def</span> <span class="fn">get_label</span>(obj_meta, uid):
+    l = obj_meta.classifier_meta_list
+    <span class="kw">while</span> l:
+        cm = pyds.NvDsClassifierMeta.cast(l.data)
+        <span class="kw">if</span> cm.unique_component_id == uid:
+            ll = cm.label_info_list
+            <span class="kw">while</span> ll:
+                li = pyds.NvDsLabelInfo.cast(ll.data)
+                <span class="kw">return</span> li.result_label, li.result_prob
+                ll = ll.next
+        l = l.next
+    <span class="kw">return</span> <span class="nb">None</span>, <span class="num">0.0</span>
+
+<span class="cm"># ── Main probe ────────────────────────────────────────────────────</span>
+<span class="kw">def</span> <span class="fn">multi_sgie_probe</span>(pad, info, u_data):
+    gst_buffer = info.get_buffer()
+    batch_meta  = pyds.gst_buffer_get_nvds_batch_meta(<span class="nb">hash</span>(gst_buffer))
+
+    l_frame = batch_meta.frame_meta_list
+    <span class="kw">while</span> l_frame:
+        frame_meta = pyds.NvDsFrameMeta.cast(l_frame.data)
+
+        l_obj = frame_meta.obj_meta_list
+        <span class="kw">while</span> l_obj:
+            obj  = pyds.NvDsObjectMeta.cast(l_obj.data)
+            rect = obj.rect_params
+            key  = (frame_meta.source_id, obj.object_id)
+
+            result = {
+                <span class="st">"frame_num"</span>:   frame_meta.frame_num,
+                <span class="st">"source_id"</span>:   frame_meta.source_id,
+                <span class="st">"object_id"</span>:   obj.object_id,
+                <span class="st">"class_id"</span>:    obj.class_id,
+                <span class="st">"pgie_conf"</span>:   obj.confidence,
+                <span class="st">"tracker_conf"</span>:obj.tracker_confidence,
+                <span class="st">"bbox"</span>: (rect.left, rect.top,
+                          rect.width, rect.height),
+            }
+
+            <span class="cm"># ── SGIE-2: Color classifier (label mode) ────────</span>
+            color_lbl, color_prob = get_label(obj, COLOR_SGIE_UID)
+            result[<span class="st">"color_label"</span>] = color_lbl
+            result[<span class="st">"color_prob"</span>]  = color_prob
+
+            <span class="cm"># ── SGIE-2: Color classifier (tensor mode) ───────</span>
+            color_tensor = extract_tensor(
+                obj, COLOR_SGIE_UID, N_COLOR_CLASSES
+            )
+            result[<span class="st">"color_probs"</span>] = color_tensor  <span class="cm"># float32[15]</span>
+
+            <span class="cm"># ── SGIE-3: LP detector (tensor mode) ────────────</span>
+            <span class="cm"># LP detector exposes raw detection tensor</span>
+            lp_tensor = extract_tensor(
+                obj, LP_DET_SGIE_UID, <span class="nb">None</span>  <span class="cm"># variable shape</span>
+            )
+            result[<span class="st">"lp_detected"</span>] = lp_tensor <span class="kw">is not</span> <span class="nb">None</span>
+
+            <span class="cm"># ── SGIE-4: LP char classifier (label mode) ──────</span>
+            lp_text, lp_conf = get_label(obj, LP_CLS_SGIE_UID)
+            result[<span class="st">"lp_text"</span>] = lp_text
+            result[<span class="st">"lp_conf"</span>] = lp_conf
+
+            process_result(key, result)
+            l_obj = l_obj.next
+        l_frame = l_frame.next
+    <span class="kw">return</span> Gst.PadProbeReturn.OK</pre>
+  </div>
+</div>
+
+<!-- ── SECTION: SGIE CONFIG TABLE ── -->
+<div class="section" id="sgie-table">
+  <div class="sec-header">
+    <span class="sec-tag">// 10</span>
+    <h2>SGIE Configuration Reference</h2>
+  </div>
+
+  <div class="tbl">
+    <table>
+      <thead>
+        <tr>
+          <th>Property</th>
+          <th style="color:var(--sgie-color)">SGIE-2 Color</th>
+          <th style="color:var(--sgie-lp)">SGIE-3 LP Detector</th>
+          <th style="color:var(--sgie-lpc)">SGIE-4 LP Classifier</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>gie-unique-id</td><td>2</td><td>3</td><td>4</td></tr>
+        <tr><td>network-type</td><td>1 (classifier)</td><td>0 (detector)</td><td>1 (classifier)</td></tr>
+        <tr><td>process-mode</td><td>2 (SGIE)</td><td>2 (SGIE)</td><td>2 (SGIE)</td></tr>
+        <tr><td>operate-on-gie-id</td><td>1 (PGIE)</td><td>1 (PGIE)</td><td>3 (LP detector)</td></tr>
+        <tr><td>operate-on-class-ids</td><td>0 (vehicle)</td><td>0 (vehicle)</td><td>0 (LP bbox)</td></tr>
+        <tr><td>output-tensor-meta</td><td>1 (tensor mode)</td><td>1 (tensor mode)</td><td>0 (label mode)</td></tr>
+        <tr><td>model input size</td><td>224×224</td><td>640×640</td><td>128×32 (LP crop)</td></tr>
+        <tr><td>num-detected-classes</td><td>15</td><td>1 (plate)</td><td>36 (chars)</td></tr>
+        <tr><td>classifier-async-mode</td><td>0 (sync)</td><td>0 (sync)</td><td>0 (sync)</td></tr>
+        <tr><td>input-object-min-width</td><td>64</td><td>80</td><td>20</td></tr>
+        <tr><td>Metadata location</td><td>obj_user_meta_list</td><td>obj_user_meta_list</td><td>classifier_meta_list</td></tr>
+        <tr><td>Read via</td><td>extract_tensor(uid=2, n=15)</td><td>extract_tensor(uid=3)</td><td>get_label(uid=4)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="warn">
+    <span class="callout-title">LP Classifier Chain</span>
+    SGIE-4 operates on objects found by SGIE-3 (<code>operate-on-gie-id=3</code>). This means
+    it only runs when SGIE-3 detects a license plate bbox within the vehicle crop. The chain is:
+    PGIE finds vehicles → SGIE-3 finds LP within vehicle crop → SGIE-4 classifies characters on LP crop.
+  </div>
+</div>
+
+<!-- ── SECTION: ACCESS PATTERNS ── -->
+<div class="section" id="access-patterns">
+  <div class="sec-header">
+    <span class="sec-tag">// 11</span>
+    <h2>Complete Access Pattern Cheatsheet</h2>
+  </div>
+
+  <div class="code-block">
+    <div class="code-top"><span class="code-name">all access patterns in one place</span><span class="code-badge">Python</span></div>
+    <pre><span class="cm"># ── Frame-level fields ────────────────────────────────────────────</span>
+frame_meta.frame_num           <span class="cm"># uint64 — frame counter</span>
+frame_meta.source_id           <span class="cm"># uint32 — stream source</span>
+frame_meta.batch_id            <span class="cm"># uint32 — position in batch (for surface)</span>
+frame_meta.source_frame_width  <span class="cm"># frame W in pixels</span>
+frame_meta.source_frame_height <span class="cm"># frame H in pixels</span>
+
+<span class="cm"># ── Object-level fields ───────────────────────────────────────────</span>
+obj.object_id                  <span class="cm"># uint64 — tracker-assigned stable ID</span>
+obj.class_id                   <span class="cm"># int    — PGIE class index</span>
+obj.confidence                 <span class="cm"># float  — PGIE detection confidence</span>
+obj.tracker_confidence         <span class="cm"># float  — NvDCF tracker match confidence</span>
+obj.obj_label                  <span class="cm"># char[] — class label string "vehicle"</span>
+
+<span class="cm"># ── Bounding box ──────────────────────────────────────────────────</span>
+rect = obj.rect_params
+rect.left, rect.top            <span class="cm"># top-left corner (pixels)</span>
+rect.width, rect.height        <span class="cm"># bbox dimensions (pixels)</span>
+
+<span class="cm"># ── SGIE-2 color label (output-tensor-meta=0) ────────────────────</span>
+color_lbl, color_prob = get_label(obj, uid=<span class="num">2</span>)
+
+<span class="cm"># ── SGIE-2 color tensor (output-tensor-meta=1) ───────────────────</span>
+color_probs = extract_tensor(obj, uid=<span class="num">2</span>, n=<span class="num">15</span>)  <span class="cm"># float32[15]</span>
+np.argmax(color_probs)                            <span class="cm"># winning class</span>
+
+<span class="cm"># ── SGIE-4 LP text (label mode) ───────────────────────────────────</span>
+lp_text, lp_conf = get_label(obj, uid=<span class="num">4</span>)          <span class="cm"># "SGX9482H"</span>
+
+<span class="cm"># ── Access pixel data (for crop extraction) ───────────────────────</span>
+n_frame = pyds.get_nvds_buf_surface(<span class="nb">hash</span>(gst_buffer), frame_meta.batch_id)
+frame_bgr = np.array(n_frame, copy=<span class="nb">True</span>)
+crop = frame_bgr[y1:y2, x1:x2]                   <span class="cm"># vehicle crop</span>
+
+<span class="cm"># ── Multi-stream unique key ───────────────────────────────────────</span>
+key = (frame_meta.source_id, obj.object_id)       <span class="cm"># use this always</span></pre>
+  </div>
+</div>
+
+</main>
+</div>
+
+<footer>
+  <div class="footer-left">
+    DeepStream 8 · NvDs Metadata Reference<br>
+    NvDsBatchMeta · NvDsObjectMeta · NvDsClassifierMeta · NvDsInferTensorMeta
+  </div>
+  <div class="footer-badges">
+    <span class="fbadge">pyds</span>
+    <span class="fbadge">NvDCF</span>
+    <span class="fbadge">TensorRT</span>
+    <span class="fbadge">ctypes</span>
+    <span class="fbadge">GStreamer</span>
+    <span class="fbadge">L40S</span>
+  </div>
+</footer>
+
+</div>
+
+<!-- ─────────────────────────────────────────────
+     INTERACTIVE EXPLORER DATA + LOGIC
+───────────────────────────────────────────── -->
+<script>
+// ── Sample dataset ───────────────────────────────────────────────
+const COLOR_LABELS = [
+  "black","white","silver","gray","red","blue",
+  "green","yellow","orange","brown","purple",
+  "beige","dark_blue","dark_green","maroon"
+];
+
+const COLOR_SWATCHES = {
+  black:"#111",white:"#f0f0f0",silver:"#c0c0c8",gray:"#707070",
+  red:"#c02020",blue:"#2060b0",green:"#208040",yellow:"#d0b020",
+  orange:"#d06010",brown:"#7a4820",purple:"#702090",
+  beige:"#d0b890",dark_blue:"#102040",dark_green:"#103020",maroon:"#5a0010"
+};
+
+// Generate a realistic softmax distribution peaked at winnerIdx
+function genSoftmax(n, winnerIdx, winnerVal) {
+  const raw = Array.from({length:n}, () => Math.random() * 0.5);
+  raw[winnerIdx] = winnerVal * 10;
+  const expArr = raw.map(Math.exp);
+  const sum = expArr.reduce((a,b)=>a+b,0);
+  return expArr.map(v => v/sum);
+}
+
+// Generate LP char distribution
+function genLPCharDist(ch) {
+  const chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  const idx = chars.indexOf(ch);
+  const raw = Array.from({length:36}, () => Math.random()*0.1);
+  raw[idx] = 8 + Math.random();
+  const s = raw.reduce((a,b)=>a+b,0);
+  return raw.map(v=>v/s);
+}
+
+const SAMPLE_OBJECTS = [
+  {
+    object_id: 1042, class_id: 0, obj_label: "vehicle",
+    pgie_conf: 0.947, tracker_conf: 0.912,
+    bbox: {left:120, top:340, width:280, height:160},
+    color_winner: 2, color_winner_val: 0.74,   // silver
+    has_lp: true, lp_text: "SGX9482H", lp_conf: 0.963,
+    lp_bbox: {left:155, top:460, width:120, height:40},
+    frame_age: 47
+  },
+  {
+    object_id: 1038, class_id: 0, obj_label: "vehicle",
+    pgie_conf: 0.891, tracker_conf: 0.876,
+    bbox: {left:540, top:280, width:310, height:180},
+    color_winner: 0, color_winner_val: 0.91,   // black
+    has_lp: true, lp_text: "GBP1234A", lp_conf: 0.941,
+    lp_bbox: {left:580, top:418, width:130, height:42},
+    frame_age: 83
+  },
+  {
+    object_id: 1055, class_id: 0, obj_label: "vehicle",
+    pgie_conf: 0.823, tracker_conf: 0.791,
+    bbox: {left:920, top:310, width:260, height:155},
+    color_winner: 4, color_winner_val: 0.86,   // red
+    has_lp: false, lp_text: null, lp_conf: 0,
+    lp_bbox: null,
+    frame_age: 12
+  },
+  {
+    object_id: 1029, class_id: 0, obj_label: "vehicle",
+    pgie_conf: 0.968, tracker_conf: 0.944,
+    bbox: {left:1200, top:260, width:320, height:190},
+    color_winner: 1, color_winner_val: 0.82,   // white
+    has_lp: true, lp_text: "EWQ5671Z", lp_conf: 0.887,
+    lp_bbox: {left:1240, top:400, width:140, height:44},
+    frame_age: 129
+  },
+  {
+    object_id: 1061, class_id: 0, obj_label: "vehicle",
+    pgie_conf: 0.742, tracker_conf: 0.698,
+    bbox: {left:1580, top:350, width:220, height:130},
+    color_winner: 3, color_winner_val: 0.54,   // gray (ambiguous with silver)
+    has_lp: false, lp_text: null, lp_conf: 0,
+    lp_bbox: null,
+    frame_age: 6
+  },
+];
+
+// Pre-generate tensors
+SAMPLE_OBJECTS.forEach(obj => {
+  obj.color_probs = genSoftmax(15, obj.color_winner, obj.color_winner_val);
+  if (obj.has_lp) {
+    obj.lp_char_probs = {};
+    for (const ch of obj.lp_text) {
+      if (!obj.lp_char_probs[ch]) obj.lp_char_probs[ch] = genLPCharDist(ch);
+    }
+  }
+});
+
+// ── Render ───────────────────────────────────────────────────────
+function fmt(v, dec=3) { return v.toFixed(dec); }
+function pct(v) { return Math.round(v*100); }
+
+function colorBadge(obj) {
+  const lbl = COLOR_LABELS[obj.color_winner];
+  const swatch = COLOR_SWATCHES[lbl] || '#888';
+  return `<div class="obj-color-badge">
+    <div class="obj-color-dot" style="background:${swatch}"></div>${lbl} ${pct(obj.color_probs[obj.color_winner])}%</div>`;
+}
+
+function lpBadge(obj) {
+  if (obj.has_lp) return `<div class="obj-lp-badge">${obj.lp_text}</div>`;
+  return `<div class="obj-no-lp">—</div>`;
+}
+
+// Generate color heatmap bars
+function colorHeatmap(probs) {
+  const CHARS_SHORT = COLOR_LABELS.map(l => l.slice(0,5));
+  let bars = probs.map((p, i) => {
+    const h = Math.max(2, Math.round(p * 58));
+    const isWin = i === probs.indexOf(Math.max(...probs));
+    const col = isWin ? '#40e0c0' : '#303860';
+    const label = COLOR_LABELS[i];
+    const swatch = COLOR_SWATCHES[label] || '#808080';
+    const dotStyle = isWin ? `background:${swatch};border-color:rgba(255,255,255,0.4)` : `background:${swatch};opacity:0.4`;
+    return `<div class="hm-cell">
+      <div class="hm-bar-wrap">
+        <div class="hm-bar" style="height:${h}px;background:${col}"></div>
+      </div>
+      <div class="hm-val" style="color:${isWin?'var(--teal)':'var(--text-dim)'};">${pct(p)}%</div>
+      <div class="hm-class" title="${label}" style="color:${isWin?'var(--teal)':'var(--text-dim)'}">${CHARS_SHORT[i]}</div>
+    </div>`;
+  }).join('');
+  return `<div class="hm-bar-row">${bars}</div>`;
+}
+
+// Generate LP char row (top-5 chars per character position)
+function lpCharRow(ch, probs) {
+  const chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  const indexed = probs.map((p,i)=>({p,c:chars[i]})).sort((a,b)=>b.p-a.p);
+  return indexed.slice(0,8).map((item,rank) => {
+    const win = item.c === ch;
+    return `<div class="lp-cell ${win?'winner':''}" title="${fmt(item.p)}">${item.c}<br><span style="font-size:8px">${pct(item.p)}%</span></div>`;
+  }).join('');
+}
+
+function renderObjects(filter) {
+  const list = document.getElementById('objList');
+  list.innerHTML = '';
+  const objs = filter === 'has_lp'
+    ? SAMPLE_OBJECTS.filter(o => o.has_lp)
+    : filter === 'no_lp'
+    ? SAMPLE_OBJECTS.filter(o => !o.has_lp)
+    : SAMPLE_OBJECTS;
+
+  objs.forEach((obj, idx) => {
+    const lbl = COLOR_LABELS[obj.color_winner];
+    const swatch = COLOR_SWATCHES[lbl];
+    const stability = obj.color_probs[obj.color_winner];
+    const isAmbiguous = stability < 0.6;
+
+    // Build LP character detail
+    let lpCharDetail = '';
+    if (obj.has_lp) {
+      const chars = [...new Set(obj.lp_text.split(''))];
+      lpCharDetail = `<div class="tensor-label" style="margin-top:16px">LP CHAR DISTRIBUTIONS (SGIE-4 · uid=4 · 36 char classes)</div>`;
+      for (const ch of [...obj.lp_text]) {
+        const probs = obj.lp_char_probs[ch];
+        if (!probs) continue;
+        lpCharDetail += `
+          <div style="margin-bottom:10px">
+            <div style="font-family:var(--mono);font-size:10px;color:var(--gold);margin-bottom:4px">
+              position char: '${ch}' — top-8 candidates</div>
+            <div class="lp-tensor-row">${lpCharRow(ch, probs)}</div>
+          </div>`;
+      }
+    } else {
+      lpCharDetail = `<div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);padding:12px 0">
+        SGIE-3 found no license plate on this object — SGIE-4 did not run.</div>`;
+    }
+
+    const row = document.createElement('div');
+    row.className = 'obj-row';
+    row.dataset.filter = obj.has_lp ? 'has_lp' : 'no_lp';
+    row.innerHTML = `
+      <div class="obj-row-header" onclick="toggleRow(this.parentElement, ${idx})">
+        <span class="obj-expand-icon">▶</span>
+        <span class="obj-id">#${obj.object_id}</span>
+        <span class="obj-class">${obj.obj_label}</span>
+        <span class="obj-conf">${fmt(obj.pgie_conf,3)}</span>
+        <span class="obj-bbox">${obj.bbox.width}×${obj.bbox.height}</span>
+        <span>${colorBadge(obj)}</span>
+        <span>${lpBadge(obj)}</span>
+      </div>
+      <div class="obj-detail">
+        <div class="detail-tabs">
+          <div class="dtab active" onclick="switchTab(this, 'obj-${idx}')">NvDsObjectMeta</div>
+          <div class="dtab" onclick="switchTab(this, 'cls-${idx}')">ClassifierMeta</div>
+          <div class="dtab" onclick="switchTab(this, 'tensor-${idx}')">TensorMeta · Color</div>
+          <div class="dtab" onclick="switchTab(this, 'lp-${idx}')">LP Chain</div>
+        </div>
+
+        <!-- OBJ META PANE -->
+        <div class="dtab-pane active" id="obj-${idx}">
+          <div class="dfield"><div class="dfield-key">object_id</div><div class="dfield-val gold">${obj.object_id}</div></div>
+          <div class="dfield"><div class="dfield-key">class_id</div><div class="dfield-val">${obj.class_id} <span style="color:var(--text-dim)">(vehicle)</span></div></div>
+          <div class="dfield"><div class="dfield-key">obj_label</div><div class="dfield-val">"${obj.obj_label}"</div></div>
+          <div class="dfield"><div class="dfield-key">confidence</div><div class="dfield-val ${obj.pgie_conf > 0.9 ? 'green' : 'amber'}">${fmt(obj.pgie_conf)}</div></div>
+          <div class="dfield"><div class="dfield-key">tracker_confidence</div><div class="dfield-val ${obj.tracker_conf > 0.85 ? 'green' : 'amber'}">${fmt(obj.tracker_conf)}</div></div>
+          <div class="dfield"><div class="dfield-key">rect_params.left</div><div class="dfield-val">${obj.bbox.left} px</div></div>
+          <div class="dfield"><div class="dfield-key">rect_params.top</div><div class="dfield-val">${obj.bbox.top} px</div></div>
+          <div class="dfield"><div class="dfield-key">rect_params.width</div><div class="dfield-val">${obj.bbox.width} px</div></div>
+          <div class="dfield"><div class="dfield-key">rect_params.height</div><div class="dfield-val">${obj.bbox.height} px</div></div>
+          <div class="dfield"><div class="dfield-key">track age (frames)</div><div class="dfield-val">${obj.frame_age}</div></div>
+          <div class="dfield"><div class="dfield-key">source_id</div><div class="dfield-val">0</div></div>
+          <div class="dfield"><div class="dfield-key">frame_num</div><div class="dfield-val">2847</div></div>
+          <div class="dfield"><div class="dfield-key">classifier_meta_list</div><div class="dfield-val teal">SGIE-4 (LP chars) — label mode</div></div>
+          <div class="dfield"><div class="dfield-key">obj_user_meta_list</div><div class="dfield-val violet">SGIE-2 (color tensor) + SGIE-3 (LP det tensor)</div></div>
+        </div>
+
+        <!-- CLASSIFIER META PANE -->
+        <div class="dtab-pane" id="cls-${idx}">
+          <div style="margin-bottom:14px">
+            <div class="tensor-label">NvDsClassifierMeta · unique_component_id=4 · SGIE-4 LP Character Classifier</div>
+            ${obj.has_lp ? `
+            <div class="dfield" style="margin-top:8px"><div class="dfield-key">unique_component_id</div><div class="dfield-val violet">4</div></div>
+            <div class="dfield"><div class="dfield-key">num_labels</div><div class="dfield-val">1</div></div>
+            <div class="dfield"><div class="dfield-key">result_label</div><div class="dfield-val gold">"${obj.lp_text}"</div></div>
+            <div class="dfield"><div class="dfield-key">result_prob</div><div class="dfield-val green">${fmt(obj.lp_conf)}</div></div>
+            <div class="dfield"><div class="dfield-key">label_id</div><div class="dfield-val">(composite from char sequence)</div></div>
+            ` : `
+            <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);padding:10px 0">
+              SGIE-4 did not run — no LP found by SGIE-3</div>
+            `}
+          </div>
+          <div style="margin-top:16px">
+            <div class="tensor-label">Note: SGIE-2 (color) runs in tensor mode — no entry here</div>
+            <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-top:6px">
+              classifier_meta_list has 0 entries from SGIE-2 because output-tensor-meta=1.<br>
+              Color data is in obj_user_meta_list instead — see TensorMeta tab.
+            </div>
+          </div>
+        </div>
+
+        <!-- TENSOR META PANE (color) -->
+        <div class="dtab-pane" id="tensor-${idx}">
+          <div class="tensor-label">NvDsInferTensorMeta · unique_id=2 · SGIE-2 Color Classifier · 15 classes</div>
+          <div class="dfield" style="margin-top:8px"><div class="dfield-key">unique_id</div><div class="dfield-val teal">2</div></div>
+          <div class="dfield"><div class="dfield-key">num_output_layers</div><div class="dfield-val">1</div></div>
+          <div class="dfield"><div class="dfield-key">output_layers_info[0].layerName</div><div class="dfield-val">"output0"</div></div>
+          <div class="dfield"><div class="dfield-key">dims.numDims</div><div class="dfield-val">1</div></div>
+          <div class="dfield"><div class="dfield-key">dims.d[0]</div><div class="dfield-val">15</div></div>
+          <div class="dfield"><div class="dfield-key">dataType</div><div class="dfield-val">FLOAT (0)</div></div>
+          <div class="dfield"><div class="dfield-key">winner class</div>
+            <div class="dfield-val teal">
+              [${obj.color_winner}] ${COLOR_LABELS[obj.color_winner]} — ${pct(obj.color_probs[obj.color_winner])}%
+              ${isAmbiguous ? '<span style="color:var(--rose);font-size:10px;margin-left:8px">⚠ ambiguous</span>' : ''}
+            </div>
+          </div>
+          <div style="margin-top:14px">
+            <div class="tensor-label">Softmax probability vector — float32[15]</div>
+            <div class="heatmap-row">${colorHeatmap(obj.color_probs)}</div>
+          </div>
+          <div style="margin-top:10px">
+            <div class="tensor-label">Raw values</div>
+            <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);line-height:1.9;margin-top:4px">
+              ${obj.color_probs.map((p,i) => {
+                const isW = i === obj.color_winner;
+                return `<span style="color:${isW?'var(--teal)':'var(--text-dim)'}">
+                  [${i}] ${COLOR_LABELS[i].padEnd(10)} ${fmt(p,4)}${isW?' ← winner':''}</span>`;
+              }).join('<br>')}
+            </div>
+          </div>
+        </div>
+
+        <!-- LP CHAIN PANE -->
+        <div class="dtab-pane" id="lp-${idx}">
+          <div class="tensor-label">SGIE-3 LP Detector · unique_id=3 · output-tensor-meta=1</div>
+          <div class="dfield" style="margin-top:8px"><div class="dfield-key">unique_id</div><div class="dfield-val gold">3</div></div>
+          <div class="dfield"><div class="dfield-key">LP detected</div>
+            <div class="dfield-val ${obj.has_lp?'green':'rose'}">${obj.has_lp ? 'YES — 1 plate found' : 'NO — confidence below threshold'}</div>
+          </div>
+          ${obj.has_lp && obj.lp_bbox ? `
+          <div class="dfield"><div class="dfield-key">LP bbox.left</div><div class="dfield-val">${obj.lp_bbox.left} px</div></div>
+          <div class="dfield"><div class="dfield-key">LP bbox.top</div><div class="dfield-val">${obj.lp_bbox.top} px</div></div>
+          <div class="dfield"><div class="dfield-key">LP bbox.width</div><div class="dfield-val">${obj.lp_bbox.width} px</div></div>
+          <div class="dfield"><div class="dfield-key">LP bbox.height</div><div class="dfield-val">${obj.lp_bbox.height} px</div></div>
+          ` : ''}
+          ${lpCharDetail}
+        </div>
+      </div>
+    `;
+    list.appendChild(row);
+  });
+}
+
+function toggleRow(row, idx) {
+  const wasOpen = row.classList.contains('open');
+  document.querySelectorAll('.obj-row.open').forEach(r => r.classList.remove('open'));
+  if (!wasOpen) row.classList.add('open');
+}
+
+function switchTab(tab, paneId) {
+  const detail = tab.closest('.obj-detail');
+  detail.querySelectorAll('.dtab').forEach(t => t.classList.remove('active'));
+  detail.querySelectorAll('.dtab-pane').forEach(p => p.classList.remove('active'));
+  tab.classList.add('active');
+  document.getElementById(paneId).classList.add('active');
+}
+
+function filterObjs(type, btn) {
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderObjects(type);
+}
+
+// Initial render
+renderObjects('all');
+</script>
+
+</body>
+</html>
