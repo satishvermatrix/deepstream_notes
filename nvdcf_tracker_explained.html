@@ -1,0 +1,1527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NvDCF Tracker — A Visual Explanation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,700;9..144,900&family=Crimson+Pro:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:           #f3eee2;
+    --bg-deep:      #ebe5d3;
+    --bg-card:      #faf6ec;
+    --ink:          #15140f;
+    --ink-2:        #3d3c34;
+    --ink-3:        #6a685c;
+    --ink-4:        #9a988a;
+    --rule:         #15140f1a;
+    --rule-strong:  #15140f33;
+
+    --c-visual:       #0e7256;
+    --c-visual-bg:    #d8efe5;
+    --c-visual-ink:   #074133;
+    --c-motion:       #b65f1c;
+    --c-motion-bg:    #f6e3cf;
+    --c-motion-ink:   #663109;
+    --c-reid:         #5a3fc0;
+    --c-reid-bg:      #e5e0fa;
+    --c-reid-ink:     #2f1f7a;
+    --c-assoc:        #1c5fa5;
+    --c-assoc-bg:     #d8e7f7;
+    --c-assoc-ink:    #0c3a6d;
+    --c-mgmt:         #9c2f4f;
+    --c-mgmt-bg:      #f6dde4;
+    --c-mgmt-ink:     #5d1830;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink); }
+  body {
+    font-family: 'Crimson Pro', 'Iowan Old Style', Georgia, serif;
+    font-size: 18px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  article {
+    max-width: 880px;
+    margin: 0 auto;
+    padding: 80px 32px 120px;
+  }
+
+  /* Header */
+  header.doc {
+    margin-bottom: 64px;
+    border-bottom: 1px solid var(--rule-strong);
+    padding-bottom: 40px;
+  }
+  .eyebrow {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin-bottom: 18px;
+  }
+  h1.doc-title {
+    font-family: 'Fraunces', serif;
+    font-weight: 500;
+    font-size: 64px;
+    line-height: 1.02;
+    letter-spacing: -0.02em;
+    margin: 0 0 18px 0;
+    font-variation-settings: "opsz" 144, "SOFT" 50;
+  }
+  h1.doc-title em {
+    font-style: italic;
+    font-weight: 400;
+    font-variation-settings: "opsz" 144, "SOFT" 100;
+  }
+  .doc-sub {
+    font-family: 'Fraunces', serif;
+    font-style: italic;
+    font-weight: 300;
+    font-size: 22px;
+    line-height: 1.4;
+    color: var(--ink-2);
+    margin: 0;
+    max-width: 600px;
+  }
+  .meta-row {
+    display: flex;
+    gap: 32px;
+    margin-top: 32px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--ink-3);
+  }
+  .meta-row span strong {
+    color: var(--ink);
+    font-weight: 500;
+  }
+
+  /* Section */
+  section {
+    margin: 80px 0;
+    scroll-margin-top: 32px;
+  }
+  .section-marker {
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+  .section-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--ink-4);
+    letter-spacing: 0.08em;
+  }
+  .section-tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    padding: 4px 10px;
+    border-radius: 2px;
+  }
+  .tag-visual { background: var(--c-visual-bg); color: var(--c-visual-ink); }
+  .tag-motion { background: var(--c-motion-bg); color: var(--c-motion-ink); }
+  .tag-reid   { background: var(--c-reid-bg);   color: var(--c-reid-ink); }
+  .tag-assoc  { background: var(--c-assoc-bg);  color: var(--c-assoc-ink); }
+  .tag-mgmt   { background: var(--c-mgmt-bg);   color: var(--c-mgmt-ink); }
+  .tag-neutral{ background: var(--bg-deep);     color: var(--ink-2); }
+
+  h2 {
+    font-family: 'Fraunces', serif;
+    font-weight: 500;
+    font-size: 38px;
+    line-height: 1.1;
+    letter-spacing: -0.015em;
+    margin: 0 0 24px 0;
+    font-variation-settings: "opsz" 144;
+  }
+  h2 em { font-style: italic; font-weight: 400; }
+  h3 {
+    font-family: 'Fraunces', serif;
+    font-weight: 500;
+    font-size: 22px;
+    line-height: 1.25;
+    margin: 40px 0 14px 0;
+    letter-spacing: -0.01em;
+  }
+  h4 {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700;
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin: 28px 0 10px 0;
+  }
+
+  p { margin: 0 0 18px 0; }
+  p.lead {
+    font-size: 22px;
+    line-height: 1.5;
+    font-weight: 400;
+    color: var(--ink);
+  }
+
+  a { color: var(--c-assoc); text-decoration: none; border-bottom: 1px solid var(--c-assoc-bg); transition: border-color .15s; }
+  a:hover { border-bottom-color: var(--c-assoc); }
+
+  code, .mono {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.86em;
+  }
+  p code, li code {
+    background: var(--bg-deep);
+    padding: 1px 6px;
+    border-radius: 2px;
+    font-size: 0.82em;
+  }
+  pre {
+    background: var(--bg-card);
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--ink-4);
+    padding: 20px 24px;
+    overflow-x: auto;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    line-height: 1.55;
+    border-radius: 2px;
+  }
+  pre .k { color: var(--c-mgmt-ink); font-weight: 500; }
+  pre .s { color: var(--c-visual-ink); }
+  pre .c { color: var(--ink-4); font-style: italic; }
+  pre .n { color: var(--c-motion-ink); }
+
+  ul, ol { padding-left: 22px; margin: 0 0 18px 0; }
+  ul li, ol li { margin-bottom: 8px; }
+  ul.tight li { margin-bottom: 2px; }
+
+  blockquote {
+    margin: 24px 0;
+    padding: 4px 0 4px 24px;
+    border-left: 3px solid var(--c-assoc);
+    font-family: 'Fraunces', serif;
+    font-style: italic;
+    font-size: 19px;
+    line-height: 1.45;
+    color: var(--ink-2);
+  }
+
+  /* TOC */
+  nav.toc {
+    background: var(--bg-card);
+    border: 1px solid var(--rule);
+    padding: 24px 28px;
+    margin-bottom: 80px;
+    border-radius: 2px;
+  }
+  nav.toc h4 { margin-top: 0; margin-bottom: 16px; color: var(--ink-2); }
+  nav.toc ol {
+    list-style: none;
+    counter-reset: toc;
+    padding-left: 0;
+    margin: 0;
+    columns: 2;
+    column-gap: 32px;
+  }
+  nav.toc ol li {
+    counter-increment: toc;
+    margin-bottom: 6px;
+    font-family: 'Fraunces', serif;
+    font-size: 16px;
+    line-height: 1.3;
+    break-inside: avoid;
+  }
+  nav.toc ol li::before {
+    content: counter(toc, decimal-leading-zero);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--ink-4);
+    margin-right: 10px;
+    letter-spacing: 0.05em;
+  }
+  nav.toc a { border-bottom: none; color: var(--ink); }
+  nav.toc a:hover { color: var(--c-assoc); }
+
+  /* Figures and SVG containers */
+  figure {
+    margin: 32px 0;
+    background: var(--bg-card);
+    border: 1px solid var(--rule);
+    padding: 28px;
+    border-radius: 2px;
+  }
+  figure.dark {
+    background: #0f120e;
+    border-color: #2a2d28;
+  }
+  figcaption {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--ink-3);
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px solid var(--rule);
+    letter-spacing: 0.02em;
+  }
+  figure.dark figcaption { color: #aaa9a0; border-top-color: #2a2d28; }
+  figcaption strong {
+    color: var(--ink);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-size: 10px;
+    margin-right: 8px;
+  }
+  figure.dark figcaption strong { color: #f1ede1; }
+
+  svg.figure-svg { width: 100%; height: auto; display: block; }
+
+  /* Frame SVG styling */
+  .frame-bg     { fill: #1a1d18; }
+  .frame-stroke { fill: none; stroke: #3a3d38; stroke-width: 0.5; }
+  .frame-floor  { fill: #232620; }
+  .frame-title  { font-family: 'JetBrains Mono', monospace; font-size: 11px; fill: #8d8b80; letter-spacing: 0.06em; }
+
+  /* Generic labels */
+  .lbl     { font-family: 'JetBrains Mono', monospace; font-size: 11px; fill: var(--ink-2); letter-spacing: 0.02em; }
+  .lbl-dim { font-family: 'JetBrains Mono', monospace; font-size: 10px; fill: var(--ink-4); }
+  .lbl-on-dark     { font-family: 'JetBrains Mono', monospace; font-size: 11px; fill: #d6d3c5; }
+  .lbl-on-dark-dim { font-family: 'JetBrains Mono', monospace; font-size: 10px; fill: #807e72; }
+  .num  { font-family: 'JetBrains Mono', monospace; font-size: 12px; fill: var(--ink); font-weight: 500; }
+  .title-text { font-family: 'Fraunces', serif; font-style: italic; fill: var(--ink-2); font-size: 14px; }
+
+  /* Pedestrian / object styles */
+  .ped-body { stroke-width: 0; }
+  .bbox     { fill: none; stroke-width: 1.5; }
+  .bbox-dashed { fill: none; stroke-width: 1.2; stroke-dasharray: 4 3; }
+  .id-pill { font-family: 'JetBrains Mono', monospace; font-size: 9px; font-weight: 700; fill: #fff; }
+  .id-pill-bg { stroke-width: 0; }
+
+  /* Knobs table */
+  table.knobs {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 24px 0;
+    font-size: 14px;
+  }
+  table.knobs th {
+    text-align: left;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    padding: 12px 16px;
+    border-bottom: 2px solid var(--ink);
+    background: var(--bg-card);
+  }
+  table.knobs td {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--rule);
+    vertical-align: top;
+    line-height: 1.45;
+  }
+  table.knobs td.key {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--ink);
+    white-space: nowrap;
+  }
+  table.knobs td.def {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--c-assoc-ink);
+  }
+  table.knobs tr:hover td { background: var(--bg-card); }
+  table.knobs .group-row td {
+    background: var(--bg-deep);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+    padding: 10px 16px;
+  }
+
+  /* Interactive controls */
+  .controls {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-top: 18px;
+    padding: 14px 18px;
+    background: var(--bg-deep);
+    border-radius: 2px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    flex-wrap: wrap;
+  }
+  .controls label { color: var(--ink-2); display: flex; align-items: center; gap: 8px; }
+  .controls input[type=range] {
+    flex: 1;
+    min-width: 140px;
+    accent-color: var(--ink);
+  }
+  .controls button {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 8px 14px;
+    background: var(--ink);
+    color: var(--bg);
+    border: none;
+    border-radius: 2px;
+    cursor: pointer;
+    transition: opacity .15s;
+  }
+  .controls button:hover { opacity: 0.85; }
+  .controls .val {
+    color: var(--c-assoc-ink);
+    background: var(--bg);
+    padding: 3px 8px;
+    border-radius: 2px;
+    min-width: 36px;
+    text-align: right;
+  }
+
+  /* Side note */
+  .sidenote {
+    margin: 24px 0;
+    padding: 16px 20px;
+    background: var(--c-motion-bg);
+    border-left: 3px solid var(--c-motion);
+    font-size: 16px;
+    line-height: 1.5;
+    color: var(--c-motion-ink);
+    border-radius: 2px;
+  }
+  .sidenote h4 {
+    margin-top: 0;
+    margin-bottom: 6px;
+    color: var(--c-motion-ink);
+  }
+
+  /* Component header strip */
+  .comp-strip {
+    display: flex;
+    gap: 32px;
+    padding: 18px 24px;
+    margin: 28px 0;
+    background: var(--bg-card);
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    flex-wrap: wrap;
+  }
+  .comp-strip .item { display: flex; flex-direction: column; gap: 3px; }
+  .comp-strip .label { color: var(--ink-4); font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; }
+  .comp-strip .value { color: var(--ink); font-size: 13px; font-weight: 500; }
+
+  /* Footer */
+  footer.doc {
+    margin-top: 100px;
+    padding-top: 32px;
+    border-top: 1px solid var(--rule-strong);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--ink-3);
+    letter-spacing: 0.04em;
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+
+  /* Print */
+  @media print {
+    body { font-size: 11pt; }
+    article { padding: 0; max-width: none; }
+    section { page-break-inside: avoid; }
+    figure { page-break-inside: avoid; }
+  }
+
+  /* Mobile */
+  @media (max-width: 640px) {
+    article { padding: 40px 20px 60px; }
+    h1.doc-title { font-size: 40px; }
+    h2 { font-size: 28px; }
+    p.lead { font-size: 19px; }
+    body { font-size: 17px; }
+    nav.toc ol { columns: 1; }
+    .meta-row { flex-direction: column; gap: 8px; }
+  }
+</style>
+</head>
+<body>
+<article>
+
+<header class="doc">
+  <div class="eyebrow">DeepStream / Gst-nvtracker / Technical Note</div>
+  <h1 class="doc-title">Inside <em>NvDCF</em></h1>
+  <p class="doc-sub">A visual walk through how NVIDIA's discriminative correlation filter tracker turns a stream of detections into stable identities — with every component, every diagram, every knob.</p>
+  <div class="meta-row">
+    <span><strong>VERSION</strong> &nbsp; DeepStream 7.x</span>
+    <span><strong>BACKEND</strong> &nbsp; NvDCF / NvDeepSORT</span>
+    <span><strong>FORMAT</strong> &nbsp; long read · interactive</span>
+  </div>
+</header>
+
+<nav class="toc">
+  <h4>Contents</h4>
+  <ol>
+    <li><a href="#problem">The tracking problem</a></li>
+    <li><a href="#two-frames">Two frames, one identity</a></li>
+    <li><a href="#dcf">Discriminative Correlation Filter</a></li>
+    <li><a href="#kalman">Kalman motion model</a></li>
+    <li><a href="#reid">ReID embeddings</a></li>
+    <li><a href="#hungarian">Hungarian assignment</a></li>
+    <li><a href="#lifecycle">Target lifecycle &amp; shadow</a></li>
+    <li><a href="#pipeline">The full per-frame cycle</a></li>
+    <li><a href="#knobs">DeepStream config knobs</a></li>
+  </ol>
+</nav>
+
+<!-- ============================================================ -->
+<!-- 1. The tracking problem -->
+<!-- ============================================================ -->
+<section id="problem">
+  <div class="section-marker">
+    <span class="section-num">§ 01</span>
+    <span class="section-tag tag-neutral">Premise</span>
+  </div>
+  <h2>The tracking <em>problem</em></h2>
+  <p class="lead">A detector tells you <em>what</em> is in each frame. A tracker tells you <em>which one is which</em> across frames. NvDCF is the bridge.</p>
+
+  <p>The primary inference engine (PGIE) in a DeepStream pipeline produces bounding boxes per frame. Those boxes have no memory: the "person" detected in frame <code>N</code> and the "person" detected in frame <code>N+1</code> are anonymous to each other. The tracker's job is to look at both and decide whether they are the <em>same person</em> (carry the same <code>object_id</code>) or different people.</p>
+
+  <p>This sounds easy when one object walks through an empty scene. It becomes hard when:</p>
+  <ul>
+    <li>Two objects pass close to each other (their bounding boxes overlap).</li>
+    <li>The detector misses a frame (one of the two objects briefly disappears from the input).</li>
+    <li>An object is occluded for half a second (a person walks behind a pillar).</li>
+    <li>Two objects look similar (two delivery drivers in the same uniform).</li>
+  </ul>
+  <p>NvDCF combines four independent signals to handle these cases. Each signal compensates for the others' weaknesses.</p>
+
+  <div class="comp-strip">
+    <div class="item"><span class="label">Signal 01</span><span class="value" style="color: var(--c-visual-ink)">Visual (DCF)</span></div>
+    <div class="item"><span class="label">Signal 02</span><span class="value" style="color: var(--c-motion-ink)">Motion (Kalman)</span></div>
+    <div class="item"><span class="label">Signal 03</span><span class="value" style="color: var(--c-reid-ink)">Identity (ReID)</span></div>
+    <div class="item"><span class="label">Signal 04</span><span class="value" style="color: var(--c-assoc-ink)">Assignment (Hungarian)</span></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 2. Two frames, one identity -->
+<!-- ============================================================ -->
+<section id="two-frames">
+  <div class="section-marker">
+    <span class="section-num">§ 02</span>
+    <span class="section-tag tag-neutral">Setup</span>
+  </div>
+  <h2>Two frames, <em>one identity</em></h2>
+  <p>Before we look at any single component, here is the concrete situation the tracker faces every 33 milliseconds. Two consecutive frames from a single stream. Two people, ID&nbsp;<code>1</code> and ID&nbsp;<code>2</code>, walking towards each other.</p>
+
+  <figure class="dark">
+    <svg class="figure-svg" viewBox="0 0 800 340" role="img" aria-label="Two consecutive video frames showing two pedestrians walking towards each other">
+      <!-- Frame N -->
+      <rect class="frame-bg" x="20" y="20" width="370" height="280" rx="2"/>
+      <rect class="frame-floor" x="20" y="230" width="370" height="70"/>
+      <rect class="frame-stroke" x="20" y="20" width="370" height="280" rx="2"/>
+      <text class="frame-title" x="30" y="40">FRAME N · t = 1000ms</text>
+      <text class="lbl-on-dark-dim" x="360" y="40" text-anchor="end">CAM_01</text>
+
+      <!-- Person 1 in frame N, left side -->
+      <g transform="translate(110, 195)">
+        <ellipse cx="0" cy="0" rx="14" ry="3" fill="#000" opacity="0.4"/>
+        <circle cx="0" cy="-58" r="8" fill="#d8efe5"/>
+        <path d="M -10 -50 L 10 -50 L 12 -10 L -12 -10 Z" fill="#0e7256"/>
+        <line x1="-5" y1="-10" x2="-5" y2="14" stroke="#1a3d33" stroke-width="6" stroke-linecap="round"/>
+        <line x1="5" y1="-10" x2="5" y2="14" stroke="#1a3d33" stroke-width="6" stroke-linecap="round"/>
+        <rect class="bbox" x="-22" y="-72" width="44" height="92" stroke="#3edaa9"/>
+        <rect class="id-pill-bg" x="-22" y="-86" width="28" height="14" fill="#3edaa9"/>
+        <text class="id-pill" x="-8" y="-76" text-anchor="middle">ID 1</text>
+      </g>
+
+      <!-- Person 2 in frame N, right side -->
+      <g transform="translate(290, 195)">
+        <ellipse cx="0" cy="0" rx="14" ry="3" fill="#000" opacity="0.4"/>
+        <circle cx="0" cy="-58" r="8" fill="#f6e3cf"/>
+        <path d="M -10 -50 L 10 -50 L 12 -10 L -12 -10 Z" fill="#b65f1c"/>
+        <line x1="-5" y1="-10" x2="-5" y2="14" stroke="#5d2e0a" stroke-width="6" stroke-linecap="round"/>
+        <line x1="5" y1="-10" x2="5" y2="14" stroke="#5d2e0a" stroke-width="6" stroke-linecap="round"/>
+        <rect class="bbox" x="-22" y="-72" width="44" height="92" stroke="#e89046"/>
+        <rect class="id-pill-bg" x="-22" y="-86" width="28" height="14" fill="#e89046"/>
+        <text class="id-pill" x="-8" y="-76" text-anchor="middle">ID 2</text>
+      </g>
+
+      <!-- Velocity arrows -->
+      <path d="M 145 245 L 170 245" stroke="#3edaa9" stroke-width="1.2" marker-end="url(#m-teal)"/>
+      <path d="M 255 245 L 230 245" stroke="#e89046" stroke-width="1.2" marker-end="url(#m-amber)"/>
+      <text class="lbl-on-dark-dim" x="115" y="275">v = (+25, 0) px/frame</text>
+      <text class="lbl-on-dark-dim" x="280" y="275" text-anchor="end">v = (−25, 0) px/frame</text>
+
+      <!-- Frame N+1 -->
+      <rect class="frame-bg" x="410" y="20" width="370" height="280" rx="2"/>
+      <rect class="frame-floor" x="410" y="230" width="370" height="70"/>
+      <rect class="frame-stroke" x="410" y="20" width="370" height="280" rx="2"/>
+      <text class="frame-title" x="420" y="40">FRAME N+1 · t = 1033ms</text>
+      <text class="lbl-on-dark-dim" x="750" y="40" text-anchor="end">CAM_01</text>
+
+      <!-- Detector outputs: two anonymous boxes -->
+      <g transform="translate(580, 195)">
+        <ellipse cx="0" cy="0" rx="14" ry="3" fill="#000" opacity="0.4"/>
+        <circle cx="0" cy="-58" r="8" fill="#d8efe5"/>
+        <path d="M -10 -50 L 10 -50 L 12 -10 L -12 -10 Z" fill="#0e7256"/>
+        <line x1="-5" y1="-10" x2="-5" y2="14" stroke="#1a3d33" stroke-width="6" stroke-linecap="round"/>
+        <line x1="5" y1="-10" x2="5" y2="14" stroke="#1a3d33" stroke-width="6" stroke-linecap="round"/>
+        <rect class="bbox" x="-24" y="-72" width="46" height="92" stroke="#e8e6da" stroke-dasharray="3 2"/>
+        <rect class="id-pill-bg" x="-24" y="-86" width="34" height="14" fill="#8b8a82"/>
+        <text class="id-pill" x="-7" y="-76" text-anchor="middle">DET A</text>
+      </g>
+
+      <g transform="translate(680, 195)">
+        <ellipse cx="0" cy="0" rx="14" ry="3" fill="#000" opacity="0.4"/>
+        <circle cx="0" cy="-58" r="8" fill="#f6e3cf"/>
+        <path d="M -10 -50 L 10 -50 L 12 -10 L -12 -10 Z" fill="#b65f1c"/>
+        <line x1="-5" y1="-10" x2="-5" y2="14" stroke="#5d2e0a" stroke-width="6" stroke-linecap="round"/>
+        <line x1="5" y1="-10" x2="5" y2="14" stroke="#5d2e0a" stroke-width="6" stroke-linecap="round"/>
+        <rect class="bbox" x="-22" y="-72" width="44" height="92" stroke="#e8e6da" stroke-dasharray="3 2"/>
+        <rect class="id-pill-bg" x="-22" y="-86" width="34" height="14" fill="#8b8a82"/>
+        <text class="id-pill" x="-5" y="-76" text-anchor="middle">DET B</text>
+      </g>
+
+      <text class="lbl-on-dark-dim" x="595" y="100" text-anchor="middle">detector says:</text>
+      <text class="lbl-on-dark-dim" x="595" y="115" text-anchor="middle">"two people are here"</text>
+      <text class="lbl-on-dark-dim" x="595" y="130" text-anchor="middle">but doesn't say which is which</text>
+
+      <text class="lbl-on-dark" x="595" y="275" text-anchor="middle" style="font-style: italic; font-family: 'Fraunces', serif; font-size: 13px">DET A = ID 1?  DET B = ID 2?</text>
+
+      <defs>
+        <marker id="m-teal" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker>
+        <marker id="m-amber" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker>
+      </defs>
+    </svg>
+    <figcaption><strong>Fig 2.1</strong> The detector emits anonymous boxes <code>DET A</code> and <code>DET B</code> in frame N+1. The tracker's job: re-attach the stable IDs <code>1</code> and <code>2</code> by combining motion, appearance, and identity cues.</figcaption>
+  </figure>
+
+  <p>In an easy frame like this one — the two people are spatially separated and moving in opposite directions — almost any heuristic works. IoU alone would give the right answer. The interesting question is what happens when the situation is <em>not</em> easy. The rest of this document walks through each signal the tracker uses, with the same two-person scene as the running example, slowly making the scene harder until you need all four signals working together.</p>
+</section>
+
+<!-- ============================================================ -->
+<!-- 3. DCF -->
+<!-- ============================================================ -->
+<section id="dcf">
+  <div class="section-marker">
+    <span class="section-num">§ 03</span>
+    <span class="section-tag tag-visual">Signal 01 · Visual</span>
+  </div>
+  <h2>Discriminative <em>Correlation Filter</em></h2>
+  <p class="lead">Per target, learn a small image template that lights up when it sees that target and goes quiet on everything else. Slide it across the next frame and find the brightest spot.</p>
+
+  <h3>The intuition</h3>
+  <p>Each tracked target carries a learned <em>filter</em>: a small patch of image-shaped weights, the same size as the target's appearance template. Cross-correlating this filter with a region of the next frame produces a <em>response map</em> — a 2D heatmap where bright peaks mean "the filter matches strongly here". The peak is the new bounding box center; the peak's sharpness is the tracker's confidence.</p>
+
+  <p>"Discriminative" means the filter was trained — across many past frames — to produce a sharp peak on the target and a flat low response on the background around it. That's what makes it robust to small appearance changes: it learned what to ignore.</p>
+
+  <figure>
+    <svg class="figure-svg" viewBox="0 0 800 360" role="img" aria-label="Diagram showing a search region, a target template, and the resulting correlation response heatmap">
+      <!-- Search region (input) -->
+      <text class="lbl" x="20" y="30">SEARCH REGION (next frame, around predicted center)</text>
+      <rect x="20" y="44" width="220" height="220" fill="#1a1d18" rx="2"/>
+      <!-- Faux scene content -->
+      <rect x="20" y="44" width="220" height="220" fill="url(#scene-grad)" rx="2"/>
+      <g transform="translate(140, 154)">
+        <circle cx="0" cy="-30" r="14" fill="#d8efe5"/>
+        <path d="M -18 -16 L 18 -16 L 22 36 L -22 36 Z" fill="#0e7256"/>
+      </g>
+      <!-- Predicted center -->
+      <line x1="20" y1="154" x2="240" y2="154" stroke="#3edaa9" stroke-width="0.4" stroke-dasharray="2 2" opacity="0.5"/>
+      <line x1="140" y1="44" x2="140" y2="264" stroke="#3edaa9" stroke-width="0.4" stroke-dasharray="2 2" opacity="0.5"/>
+      <circle cx="140" cy="154" r="3" fill="#3edaa9"/>
+      <text class="lbl-on-dark-dim" x="146" y="148">predicted</text>
+
+      <!-- Template / Filter -->
+      <text class="lbl" x="290" y="30">FILTER (h)</text>
+      <text class="lbl-dim" x="290" y="45">learned online</text>
+      <rect x="290" y="60" width="80" height="80" fill="#1a1d18" rx="2"/>
+      <!-- Filter visualization: weight pattern -->
+      <g transform="translate(290, 60)">
+        <rect x="0" y="0" width="80" height="80" fill="#0e7256" opacity="0.15"/>
+        <rect x="22" y="14" width="36" height="50" fill="#3edaa9" opacity="0.6"/>
+        <circle cx="40" cy="26" r="9" fill="#d8efe5" opacity="0.85"/>
+        <rect x="0" y="0" width="80" height="80" fill="none" stroke="#3a3d38" stroke-width="0.5"/>
+        <line x1="40" y1="0" x2="40" y2="80" stroke="#fff" stroke-width="0.3" opacity="0.3"/>
+        <line x1="0" y1="40" x2="80" y2="40" stroke="#fff" stroke-width="0.3" opacity="0.3"/>
+      </g>
+
+      <!-- Operator -->
+      <text x="400" y="110" font-family="Fraunces, serif" font-size="42" fill="var(--ink)" text-anchor="middle">⋆</text>
+      <text class="lbl-dim" x="400" y="135" text-anchor="middle">correlate</text>
+
+      <!-- Response map -->
+      <text class="lbl" x="430" y="30">RESPONSE MAP (f ⋆ h)</text>
+      <text class="lbl-dim" x="430" y="45">peak = new position</text>
+      <g transform="translate(430, 60)">
+        <rect x="0" y="0" width="220" height="220" fill="#1a1d18"/>
+        <!-- Heat map approximation: concentric ellipses -->
+        <ellipse cx="125" cy="105" rx="100" ry="95" fill="#0e7256" opacity="0.12"/>
+        <ellipse cx="125" cy="105" rx="78" ry="74" fill="#0e7256" opacity="0.18"/>
+        <ellipse cx="125" cy="105" rx="58" ry="55" fill="#3edaa9" opacity="0.22"/>
+        <ellipse cx="125" cy="105" rx="40" ry="38" fill="#3edaa9" opacity="0.32"/>
+        <ellipse cx="125" cy="105" rx="24" ry="22" fill="#7ef0c0" opacity="0.5"/>
+        <ellipse cx="125" cy="105" rx="12" ry="11" fill="#fff8c4" opacity="0.8"/>
+        <circle cx="125" cy="105" r="3" fill="#fff"/>
+        <!-- Background noise -->
+        <circle cx="45" cy="170" r="4" fill="#3edaa9" opacity="0.18"/>
+        <circle cx="195" cy="55" r="3" fill="#3edaa9" opacity="0.15"/>
+        <circle cx="180" cy="180" r="3" fill="#3edaa9" opacity="0.13"/>
+        <rect x="0" y="0" width="220" height="220" fill="none" stroke="#3a3d38" stroke-width="0.5"/>
+      </g>
+      <text class="lbl-on-dark" x="555" y="170" fill="#fff8c4" style="font-weight:700">peak</text>
+      <line x1="558" y1="166" x2="555" y2="162" stroke="#fff8c4" stroke-width="0.8"/>
+
+      <!-- Annotations -->
+      <text class="lbl-dim" x="20" y="290">→ a window of features around the target's predicted</text>
+      <text class="lbl-dim" x="20" y="304">&nbsp;&nbsp; center, typically 2–4× the bbox size</text>
+      <text class="lbl-dim" x="290" y="180">→ learned weights</text>
+      <text class="lbl-dim" x="290" y="194">&nbsp;&nbsp; that fire on this</text>
+      <text class="lbl-dim" x="290" y="208">&nbsp;&nbsp; specific target's</text>
+      <text class="lbl-dim" x="290" y="222">&nbsp;&nbsp; appearance</text>
+      <text class="lbl-dim" x="430" y="290">→ argmax position is the new bbox center;</text>
+      <text class="lbl-dim" x="430" y="304">&nbsp;&nbsp; peak sharpness (PSR) is the confidence</text>
+
+      <defs>
+        <linearGradient id="scene-grad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#2a2d28"/>
+          <stop offset="100%" stop-color="#1a1d18"/>
+        </linearGradient>
+      </defs>
+    </svg>
+    <figcaption><strong>Fig 3.1</strong> The correlation response is computed in the frequency domain via FFT: <code>F⁻¹{ F(f) · conj(F(h)) }</code>. This makes it cheap enough to run on dozens of targets in parallel.</figcaption>
+  </figure>
+
+  <h3>The math, in two lines</h3>
+  <p>The filter <code>h</code> is learned by minimising, over a window of recent frames, the squared error between the actual response map and an ideal Gaussian-shaped target response (sharp peak at the target center, zero elsewhere):</p>
+  <pre><span class="c">// minimise over h:</span>
+  Σ_i || h ⋆ f_i  −  g_target ||²  +  λ ||h||²
+
+<span class="c">// closed-form solution in the frequency domain:</span>
+  H = (F̂* · Ĝ) / (F̂* · F̂ + λ)</pre>
+  <p>where <code>F̂</code> is the FFT of the feature patch, <code>Ĝ</code> is the FFT of the ideal Gaussian response, and <code>λ</code> is a regularisation constant. Each frame, the filter is updated with a learning rate:</p>
+  <pre>  H_t = (1 − η) · H_{t-1}  +  η · H_new</pre>
+  <p>where <code>η = filterLr</code>. Low <code>η</code> means a stable filter that ignores transient appearance changes; high <code>η</code> means the filter adapts fast but can drift onto an occluder.</p>
+
+  <h3>Features, not raw pixels</h3>
+  <p>NvDCF does not correlate over raw RGB. It extracts <em>features</em> from each crop — historically HOG and colour-names in the perf config, optionally deep CNN features in the accuracy config — and learns the filter in feature space. This is what gives the tracker robustness to illumination changes and minor appearance shifts that raw pixel correlation would fail on.</p>
+
+  <h3>Peak-to-Sidelobe Ratio (PSR)</h3>
+  <p>The peak value alone isn't useful — a bad response that happens to be 0.4 doesn't mean less than a sharp response that peaks at 0.3. NvDCF uses PSR: how much the peak exceeds the mean of the rest of the response map, normalised by the sidelobe standard deviation. A confident track has PSR &gt; 8; a target being lost falls below 5.</p>
+
+  <pre>  PSR = (peak − μ_sidelobe) / σ_sidelobe
+
+  if PSR < minTrackerConfidence:
+      demote target to shadow mode</pre>
+
+  <div class="sidenote">
+    <h4>Why this fails alone</h4>
+    <p>The DCF filter learns whatever sits in its search region. If a similar-looking target enters that region, the filter happily learns the new appearance and the track silently <em>switches</em>. This is why NvDCF combines DCF with motion (which can't be fooled by appearance) and ReID (which is global, not per-target-learned).</p>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 4. Kalman -->
+<!-- ============================================================ -->
+<section id="kalman">
+  <div class="section-marker">
+    <span class="section-num">§ 04</span>
+    <span class="section-tag tag-motion">Signal 02 · Motion</span>
+  </div>
+  <h2>Kalman <em>motion model</em></h2>
+  <p class="lead">Track each target's position <em>and velocity</em>, and keep a running estimate of how uncertain that prediction is.</p>
+
+  <p>The DCF can tell where in the search region a target is, but it can't tell you where the search region should be in the first place. That's the motion model's job. NvDCF uses a Kalman filter per target with state <code>[x, y, vx, vy]</code> (some configurations also include scale).</p>
+
+  <h3>Predict, then update</h3>
+  <p>Every frame the Kalman filter does two operations:</p>
+  <ul>
+    <li><strong>Predict.</strong> Apply the motion model: new position = old position + velocity·Δt. The position estimate gets pushed forward, and the uncertainty ellipse <em>grows</em> by the process noise <code>Q</code>.</li>
+    <li><strong>Update.</strong> Once a measurement arrives (the matched detection or DCF peak), correct the prediction towards it, weighted by how much we trust each. The uncertainty ellipse <em>shrinks</em>.</li>
+  </ul>
+
+  <figure>
+    <svg class="figure-svg" viewBox="0 0 800 320" role="img" aria-label="Kalman filter prediction and update visualization">
+      <rect x="20" y="20" width="760" height="280" fill="var(--bg-card)" stroke="var(--rule)" rx="2"/>
+
+      <!-- Past trajectory -->
+      <g>
+        <text class="lbl-dim" x="50" y="50">past observations</text>
+        <circle cx="80" cy="170" r="3" fill="var(--ink-3)" opacity="0.4"/>
+        <circle cx="130" cy="168" r="3" fill="var(--ink-3)" opacity="0.55"/>
+        <circle cx="185" cy="165" r="3" fill="var(--ink-3)" opacity="0.7"/>
+        <circle cx="245" cy="162" r="3.5" fill="var(--ink-3)" opacity="0.9"/>
+        <path d="M 80 170 L 130 168 L 185 165 L 245 162" fill="none" stroke="var(--ink-3)" stroke-width="0.5" stroke-dasharray="2 2"/>
+      </g>
+
+      <!-- Current (frame N) -->
+      <g transform="translate(245, 162)">
+        <ellipse cx="0" cy="0" rx="18" ry="14" fill="#b65f1c" opacity="0.15"/>
+        <ellipse cx="0" cy="0" rx="11" ry="9" fill="#b65f1c" opacity="0.3"/>
+        <circle cx="0" cy="0" r="4" fill="#b65f1c"/>
+        <text class="lbl" x="0" y="-26" text-anchor="middle" fill="var(--c-motion-ink)">frame N</text>
+        <text class="lbl-dim" x="0" y="34" text-anchor="middle">measured · σ = small</text>
+      </g>
+
+      <!-- Velocity arrow -->
+      <path d="M 252 158 L 372 134" stroke="#b65f1c" stroke-width="1.2" stroke-dasharray="3 2" marker-end="url(#m-pred)"/>
+      <text class="lbl-dim" x="312" y="138" fill="var(--c-motion-ink)">v · Δt</text>
+
+      <!-- Predicted (frame N+1) -->
+      <g transform="translate(385, 130)">
+        <ellipse cx="0" cy="0" rx="50" ry="30" fill="#b65f1c" opacity="0.1"/>
+        <ellipse cx="0" cy="0" rx="32" ry="20" fill="#b65f1c" opacity="0.18"/>
+        <circle cx="0" cy="0" r="4" fill="none" stroke="#b65f1c" stroke-width="1.2" stroke-dasharray="2 1.5"/>
+        <text class="lbl" x="0" y="-42" text-anchor="middle" fill="var(--c-motion-ink)">predicted N+1</text>
+        <text class="lbl-dim" x="0" y="48" text-anchor="middle">σ grew by √Q</text>
+      </g>
+
+      <!-- Detection arrives (frame N+1 measurement) -->
+      <g transform="translate(415, 138)">
+        <rect x="-5" y="-5" width="10" height="10" fill="#1c5fa5" transform="rotate(45)"/>
+        <text class="lbl" x="0" y="-22" text-anchor="middle" fill="var(--c-assoc-ink)">measurement</text>
+        <text class="lbl-dim" x="0" y="-8" text-anchor="middle">(matched detection)</text>
+      </g>
+
+      <!-- Update arrow -->
+      <path d="M 415 138 L 540 132" stroke="var(--ink-3)" stroke-width="0.8" stroke-dasharray="2 2"/>
+
+      <!-- Updated estimate -->
+      <g transform="translate(555, 132)">
+        <ellipse cx="0" cy="0" rx="20" ry="14" fill="#b65f1c" opacity="0.2"/>
+        <ellipse cx="0" cy="0" rx="12" ry="9" fill="#b65f1c" opacity="0.35"/>
+        <circle cx="0" cy="0" r="4" fill="#b65f1c"/>
+        <text class="lbl" x="0" y="-30" text-anchor="middle" fill="var(--c-motion-ink)">updated N+1</text>
+        <text class="lbl-dim" x="0" y="32" text-anchor="middle">σ shrank ← Kalman gain</text>
+      </g>
+
+      <!-- Stage labels -->
+      <text class="title-text" x="245" y="240" text-anchor="middle">1. observe</text>
+      <text class="title-text" x="385" y="240" text-anchor="middle">2. predict (σ grows)</text>
+      <text class="title-text" x="555" y="240" text-anchor="middle">3. update (σ shrinks)</text>
+
+      <!-- Bottom axis -->
+      <line x1="50" y1="265" x2="730" y2="265" stroke="var(--rule-strong)" stroke-width="0.5"/>
+      <text class="lbl-dim" x="50" y="282">frame N−3</text>
+      <text class="lbl-dim" x="245" y="282" text-anchor="middle">frame N</text>
+      <text class="lbl-dim" x="555" y="282" text-anchor="middle">frame N+1</text>
+
+      <defs>
+        <marker id="m-pred" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </marker>
+      </defs>
+    </svg>
+    <figcaption><strong>Fig 4.1</strong> Uncertainty grows during prediction, shrinks during update. The size of the ellipse at any moment determines how far the tracker is willing to look for the next match.</figcaption>
+  </figure>
+
+  <h3>Why uncertainty matters</h3>
+  <p>The Kalman covariance isn't an aesthetic detail — it directly controls the data association in the next step. When a target's uncertainty ellipse is small (recently observed with high confidence), the associator gives a very low cost to detections that fall inside it and a very high cost to detections outside it. When the ellipse is large (the target has been in shadow for several frames), the associator is more permissive about where the detection can be — which is what lets the tracker recover from short occlusions.</p>
+
+  <h3>Mahalanobis distance, not Euclidean</h3>
+  <p>The association cost from the motion side isn't <code>(x − x_pred)² + (y − y_pred)²</code>. It's the <em>Mahalanobis distance</em>, which divides by the uncertainty:</p>
+  <pre>  d_M² = (z − ẑ)ᵀ · S⁻¹ · (z − ẑ)</pre>
+  <p>where <code>z</code> is the detection, <code>ẑ</code> is the prediction, and <code>S</code> is the innovation covariance. The same 30-pixel gap between prediction and detection is "small" when the target's been in shadow for 10 frames (ellipse is big) and "huge" when the target was just observed (ellipse is tight). This is what makes long occlusions still work without the tracker greedily snapping to any nearby detection.</p>
+
+  <div class="sidenote">
+    <h4>Why this fails alone</h4>
+    <p>Motion is blind to identity. Two people walking towards each other have crossing trajectories; at the moment of the cross, motion alone cannot tell which is which. Motion also breaks when an object suddenly stops or reverses (its predicted position is now far from reality). DCF and ReID handle exactly these failure modes.</p>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 5. ReID -->
+<!-- ============================================================ -->
+<section id="reid">
+  <div class="section-marker">
+    <span class="section-num">§ 05</span>
+    <span class="section-tag tag-reid">Signal 03 · Identity</span>
+  </div>
+  <h2>ReID <em>embeddings</em></h2>
+  <p class="lead">A small CNN turns each cropped object into a fingerprint vector. Two vectors are close if they came from the same physical object; far if they came from different ones.</p>
+
+  <p>Where DCF learns a <em>per-target</em> filter online and Kalman tracks <em>per-target</em> motion, ReID provides a <em>global</em> appearance signal: a fixed model, trained offline on many identities, that knows how to map any crop of "a person" into a vector such that the same physical person produces nearby vectors across views, lighting, and time.</p>
+
+  <p>The bundled NvDCF ReID model in DeepStream's accuracy config is a ResNet-50 trained on Market-1501. It outputs a 256-dimensional unit-normalised embedding per crop.</p>
+
+  <figure>
+    <svg class="figure-svg" viewBox="0 0 800 340" role="img" aria-label="ReID embedding extraction and cosine similarity">
+      <!-- Crop A -->
+      <text class="lbl" x="20" y="30">CROP from frame N</text>
+      <g transform="translate(20, 44)">
+        <rect width="80" height="120" fill="#1a1d18" rx="2"/>
+        <circle cx="40" cy="32" r="14" fill="#d8efe5"/>
+        <path d="M 18 50 L 62 50 L 66 110 L 14 110 Z" fill="#0e7256"/>
+        <rect width="80" height="120" fill="none" stroke="#3a3d38" stroke-width="0.5"/>
+      </g>
+      <text class="lbl-dim" x="60" y="180" text-anchor="middle">ID 1 · t = N</text>
+
+      <!-- Crop B (same identity, later frame) -->
+      <text class="lbl" x="20" y="220">CROP from frame N+30</text>
+      <g transform="translate(20, 234)">
+        <rect width="80" height="80" fill="#1a1d18" rx="2"/>
+        <circle cx="40" cy="22" r="10" fill="#d8efe5"/>
+        <path d="M 22 36 L 58 36 L 60 76 L 20 76 Z" fill="#0e7256"/>
+        <rect width="80" height="80" fill="none" stroke="#3a3d38" stroke-width="0.5"/>
+      </g>
+
+      <!-- Crop C (different identity, distractor) -->
+      <text class="lbl" x="180" y="220">DISTRACTOR (ID 2)</text>
+      <g transform="translate(180, 234)">
+        <rect width="80" height="80" fill="#1a1d18" rx="2"/>
+        <circle cx="40" cy="22" r="10" fill="#f6e3cf"/>
+        <path d="M 22 36 L 58 36 L 60 76 L 20 76 Z" fill="#b65f1c"/>
+        <rect width="80" height="80" fill="none" stroke="#3a3d38" stroke-width="0.5"/>
+      </g>
+
+      <!-- ReID arrows -->
+      <path d="M 105 104 L 250 104" stroke="var(--c-reid)" stroke-width="1" marker-end="url(#m-reid)"/>
+      <text class="lbl-dim" x="178" y="98" text-anchor="middle" fill="var(--c-reid-ink)">ReID CNN</text>
+      <text class="lbl-dim" x="178" y="120" text-anchor="middle">f(crop)</text>
+
+      <path d="M 105 274 L 250 274" stroke="var(--c-reid)" stroke-width="1" marker-end="url(#m-reid)"/>
+      <path d="M 265 274 L 410 274" stroke="var(--c-reid)" stroke-width="1" marker-end="url(#m-reid)"/>
+
+      <!-- Embedding A -->
+      <text class="lbl" x="260" y="30">EMBEDDING e₁</text>
+      <text class="lbl-dim" x="260" y="44">256-D, ‖e₁‖ = 1</text>
+      <g transform="translate(260, 56)">
+        <!-- 16 bars showing first dims of the embedding -->
+        <g>
+          <rect x="0" y="34" width="6" height="14" fill="#5a3fc0" opacity="0.9"/>
+          <rect x="8" y="20" width="6" height="28" fill="#5a3fc0" opacity="0.9"/>
+          <rect x="16" y="42" width="6" height="6" fill="#5a3fc0" opacity="0.7"/>
+          <rect x="24" y="10" width="6" height="38" fill="#5a3fc0" opacity="0.9"/>
+          <rect x="32" y="38" width="6" height="10" fill="#5a3fc0" opacity="0.8"/>
+          <rect x="40" y="2"  width="6" height="46" fill="#5a3fc0" opacity="0.9"/>
+          <rect x="48" y="28" width="6" height="20" fill="#5a3fc0" opacity="0.85"/>
+          <rect x="56" y="40" width="6" height="8"  fill="#5a3fc0" opacity="0.7"/>
+          <rect x="64" y="14" width="6" height="34" fill="#5a3fc0" opacity="0.9"/>
+          <rect x="72" y="36" width="6" height="12" fill="#5a3fc0" opacity="0.75"/>
+          <rect x="80" y="24" width="6" height="24" fill="#5a3fc0" opacity="0.85"/>
+          <rect x="88" y="42" width="6" height="6"  fill="#5a3fc0" opacity="0.7"/>
+          <rect x="96" y="6"  width="6" height="42" fill="#5a3fc0" opacity="0.9"/>
+          <rect x="104" y="30" width="6" height="18" fill="#5a3fc0" opacity="0.85"/>
+          <rect x="112" y="44" width="6" height="4"  fill="#5a3fc0" opacity="0.6"/>
+          <rect x="120" y="20" width="6" height="28" fill="#5a3fc0" opacity="0.9"/>
+        </g>
+        <text class="lbl-dim" x="0" y="62">[0.18, 0.31, 0.07, 0.43, 0.11, 0.52, ...]</text>
+      </g>
+
+      <!-- Embedding B (close to A) -->
+      <text class="lbl" x="260" y="220">EMBEDDING e₁′</text>
+      <g transform="translate(260, 232)">
+        <g>
+          <rect x="0" y="36" width="6" height="12" fill="#5a3fc0" opacity="0.9"/>
+          <rect x="8" y="18" width="6" height="30" fill="#5a3fc0" opacity="0.9"/>
+          <rect x="16" y="44" width="6" height="4"  fill="#5a3fc0" opacity="0.6"/>
+          <rect x="24" y="12" width="6" height="36" fill="#5a3fc0" opacity="0.9"/>
+          <rect x="32" y="40" width="6" height="8"  fill="#5a3fc0" opacity="0.75"/>
+          <rect x="40" y="4"  width="6" height="44" fill="#5a3fc0" opacity="0.9"/>
+          <rect x="48" y="26" width="6" height="22" fill="#5a3fc0" opacity="0.85"/>
+          <rect x="56" y="38" width="6" height="10" fill="#5a3fc0" opacity="0.75"/>
+          <rect x="64" y="16" width="6" height="32" fill="#5a3fc0" opacity="0.9"/>
+          <rect x="72" y="34" width="6" height="14" fill="#5a3fc0" opacity="0.8"/>
+          <rect x="80" y="22" width="6" height="26" fill="#5a3fc0" opacity="0.85"/>
+          <rect x="88" y="40" width="6" height="8"  fill="#5a3fc0" opacity="0.75"/>
+          <rect x="96" y="8"  width="6" height="40" fill="#5a3fc0" opacity="0.9"/>
+          <rect x="104" y="28" width="6" height="20" fill="#5a3fc0" opacity="0.85"/>
+          <rect x="112" y="44" width="6" height="4"  fill="#5a3fc0" opacity="0.6"/>
+          <rect x="120" y="22" width="6" height="26" fill="#5a3fc0" opacity="0.85"/>
+        </g>
+      </g>
+
+      <!-- Embedding C (different) -->
+      <text class="lbl" x="420" y="220">EMBEDDING e₂</text>
+      <g transform="translate(420, 232)">
+        <g>
+          <rect x="0" y="6"  width="6" height="42" fill="#b65f1c" opacity="0.9"/>
+          <rect x="8" y="38" width="6" height="10" fill="#b65f1c" opacity="0.75"/>
+          <rect x="16" y="20" width="6" height="28" fill="#b65f1c" opacity="0.9"/>
+          <rect x="24" y="44" width="6" height="4"  fill="#b65f1c" opacity="0.6"/>
+          <rect x="32" y="14" width="6" height="34" fill="#b65f1c" opacity="0.9"/>
+          <rect x="40" y="32" width="6" height="16" fill="#b65f1c" opacity="0.8"/>
+          <rect x="48" y="2"  width="6" height="46" fill="#b65f1c" opacity="0.95"/>
+          <rect x="56" y="28" width="6" height="20" fill="#b65f1c" opacity="0.85"/>
+          <rect x="64" y="40" width="6" height="8"  fill="#b65f1c" opacity="0.7"/>
+          <rect x="72" y="10" width="6" height="38" fill="#b65f1c" opacity="0.9"/>
+          <rect x="80" y="36" width="6" height="12" fill="#b65f1c" opacity="0.8"/>
+          <rect x="88" y="18" width="6" height="30" fill="#b65f1c" opacity="0.9"/>
+          <rect x="96" y="44" width="6" height="4"  fill="#b65f1c" opacity="0.6"/>
+          <rect x="104" y="6"  width="6" height="42" fill="#b65f1c" opacity="0.9"/>
+          <rect x="112" y="34" width="6" height="14" fill="#b65f1c" opacity="0.8"/>
+          <rect x="120" y="24" width="6" height="24" fill="#b65f1c" opacity="0.85"/>
+        </g>
+      </g>
+
+      <!-- Similarity column -->
+      <text class="lbl" x="630" y="30">COSINE SIMILARITY</text>
+      <g transform="translate(620, 60)">
+        <!-- e1 vs e1' -->
+        <text class="lbl-dim" x="0" y="14">e₁ · e₁′</text>
+        <rect x="0" y="20" width="140" height="14" fill="var(--bg-deep)" rx="2"/>
+        <rect x="0" y="20" width="129" height="14" fill="#5a3fc0" opacity="0.85" rx="2"/>
+        <text class="num" x="145" y="31" fill="var(--c-reid-ink)">0.92</text>
+        <text class="lbl-dim" x="0" y="50">→ same identity</text>
+
+        <!-- e1 vs e2 -->
+        <text class="lbl-dim" x="0" y="84">e₁ · e₂</text>
+        <rect x="0" y="90" width="140" height="14" fill="var(--bg-deep)" rx="2"/>
+        <rect x="0" y="90" width="32" height="14" fill="#b65f1c" opacity="0.85" rx="2"/>
+        <text class="num" x="145" y="101" fill="var(--c-motion-ink)">0.23</text>
+        <text class="lbl-dim" x="0" y="120">→ different identity</text>
+      </g>
+
+      <defs>
+        <marker id="m-reid" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker>
+      </defs>
+    </svg>
+    <figcaption><strong>Fig 5.1</strong> Each detected target is cropped, resized, passed through the ReID CNN, and the resulting 256-D vector is L2-normalised. Cosine similarity between vectors is the per-pair identity score used in the association cost.</figcaption>
+  </figure>
+
+  <h3>How ReID feeds into association</h3>
+  <p>The cosine similarity gets converted to a cost (lower is better) by negating and shifting: <code>c_reid = 1 − cos(e_a, e_b)</code>. This is one of three terms in the association cost matrix, alongside IoU and Mahalanobis distance.</p>
+
+  <h3>Embedding gallery, not snapshot</h3>
+  <p>NvDCF doesn't compare against a single embedding per track — it maintains a small gallery (last <code>N</code> embeddings, exponential moving average, or both, depending on config). This makes the comparison robust to a single bad crop (motion blur, half-occluded frame) without letting outdated embeddings dominate.</p>
+
+  <h3>Cost vs benefit</h3>
+  <p>ReID is the most expensive component. Each per-target inference costs a CNN forward pass (~2-5 ms on Orin Nano for ResNet-50 at 128×256). With 30 targets per frame, that's 60-150 ms — far beyond a real-time budget. Two knobs make this affordable:</p>
+  <ul>
+    <li><code>reidExtractionInterval</code>: extract embeddings every N frames per target (N=3-5 typically). Embeddings change slowly; you don't need them every frame.</li>
+    <li><code>batchSize</code>: batch all targets' crops into a single inference call. The CNN's forward pass is largely fixed cost per batch.</li>
+  </ul>
+
+  <div class="sidenote">
+    <h4>Why this fails alone</h4>
+    <p>ReID is trained on a fixed domain. Generic person-ReID models give noisy embeddings on vehicles, animals, or factory parts. Two people in the same uniform also produce embeddings close enough to confuse the cost matrix. ReID needs IoU and motion to anchor it in the physical scene.</p>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 6. Hungarian -->
+<!-- ============================================================ -->
+<section id="hungarian">
+  <div class="section-marker">
+    <span class="section-num">§ 06</span>
+    <span class="section-tag tag-assoc">Signal 04 · Assignment</span>
+  </div>
+  <h2>Hungarian <em>assignment</em></h2>
+  <p class="lead">Three signals give you a cost matrix. The Hungarian algorithm gives you the globally optimal one-to-one assignment from detections to tracks in polynomial time.</p>
+
+  <p>For each (track, detection) pair, the tracker now has three cost contributions. NvDCF combines them as a weighted sum:</p>
+  <pre>  C[i, j] = w_iou · (1 − IoU(track_i, det_j))
+          + w_mhd · d_M(track_i, det_j)
+          + w_reid · (1 − cos(e_i, e_j))</pre>
+  <p>where <code>w_iou + w_mhd + w_reid = 1</code> and the individual weights live in the tracker YAML. This builds a cost matrix:</p>
+
+  <figure>
+    <svg class="figure-svg" viewBox="0 0 800 320" role="img" aria-label="Hungarian assignment cost matrix and optimal solution">
+      <!-- Two-person crossing scenario context -->
+      <text class="lbl" x="20" y="30">SCENARIO · two-person crossing at frame N+1</text>
+
+      <!-- Cost matrix headers -->
+      <g transform="translate(80, 60)">
+        <text class="lbl" x="-10" y="-10" text-anchor="end">tracks ↓ / detections →</text>
+        <text class="lbl" x="80" y="-10" text-anchor="middle" fill="var(--c-assoc-ink)">DET A</text>
+        <text class="lbl-dim" x="80" y="4" text-anchor="middle">(left-mover crop)</text>
+        <text class="lbl" x="180" y="-10" text-anchor="middle" fill="var(--c-assoc-ink)">DET B</text>
+        <text class="lbl-dim" x="180" y="4" text-anchor="middle">(right-mover crop)</text>
+      </g>
+
+      <!-- Row 1: Track ID 1 (green) -->
+      <g transform="translate(80, 90)">
+        <text class="lbl" x="-10" y="18" text-anchor="end" fill="var(--c-visual-ink)">TRACK 1 (green)</text>
+        <!-- Cell (1, A) -->
+        <rect x="30" y="0" width="100" height="36" fill="var(--c-assoc-bg)" stroke="var(--c-assoc)" stroke-width="2" rx="2"/>
+        <text class="num" x="80" y="22" text-anchor="middle" fill="var(--c-assoc-ink)">0.12</text>
+        <!-- Cell (1, B) -->
+        <rect x="130" y="0" width="100" height="36" fill="var(--bg-card)" stroke="var(--rule)" rx="2"/>
+        <text class="num" x="180" y="22" text-anchor="middle">0.71</text>
+      </g>
+
+      <!-- Row 2: Track ID 2 (amber) -->
+      <g transform="translate(80, 132)">
+        <text class="lbl" x="-10" y="18" text-anchor="end" fill="var(--c-motion-ink)">TRACK 2 (amber)</text>
+        <rect x="30" y="0" width="100" height="36" fill="var(--bg-card)" stroke="var(--rule)" rx="2"/>
+        <text class="num" x="80" y="22" text-anchor="middle">0.68</text>
+        <rect x="130" y="0" width="100" height="36" fill="var(--c-assoc-bg)" stroke="var(--c-assoc)" stroke-width="2" rx="2"/>
+        <text class="num" x="180" y="22" text-anchor="middle" fill="var(--c-assoc-ink)">0.09</text>
+      </g>
+
+      <!-- Cost breakdown -->
+      <g transform="translate(340, 60)">
+        <text class="lbl" x="0" y="0">COST BREAKDOWN · cell (1, A)</text>
+        <line x1="0" y1="8" x2="280" y2="8" stroke="var(--rule)" stroke-width="0.5"/>
+
+        <text class="lbl-dim" x="0" y="32">IoU(track 1, det A)</text>
+        <text class="lbl" x="280" y="32" text-anchor="end">= 0.88 → cost 0.12</text>
+
+        <text class="lbl-dim" x="0" y="54">Mahalanobis(track 1, det A)</text>
+        <text class="lbl" x="280" y="54" text-anchor="end">= 0.4 → cost 0.10</text>
+
+        <text class="lbl-dim" x="0" y="76">cos(e₁, e_A)</text>
+        <text class="lbl" x="280" y="76" text-anchor="end">= 0.91 → cost 0.09</text>
+
+        <line x1="0" y1="88" x2="280" y2="88" stroke="var(--rule)" stroke-width="0.5"/>
+        <text class="lbl" x="0" y="106" fill="var(--c-assoc-ink)" style="font-weight: 500">weighted (0.4 · 0.4 · 0.2)</text>
+        <text class="lbl" x="280" y="106" text-anchor="end" fill="var(--c-assoc-ink)" style="font-weight: 500">≈ 0.12</text>
+      </g>
+
+      <!-- Solution -->
+      <g transform="translate(0, 200)">
+        <text class="lbl" x="40" y="0">OPTIMAL ASSIGNMENT (Hungarian)</text>
+        <line x1="40" y1="8" x2="760" y2="8" stroke="var(--rule)" stroke-width="0.5"/>
+
+        <g transform="translate(60, 30)">
+          <circle cx="0" cy="20" r="14" fill="var(--c-visual-bg)" stroke="var(--c-visual)" stroke-width="1.5"/>
+          <text class="num" x="0" y="24" text-anchor="middle" fill="var(--c-visual-ink)">T1</text>
+          <path d="M 18 20 L 102 20" stroke="var(--c-assoc)" stroke-width="2" marker-end="url(#m-assoc)"/>
+          <text class="lbl-dim" x="60" y="14" text-anchor="middle">cost 0.12</text>
+          <circle cx="120" cy="20" r="14" fill="var(--c-assoc-bg)" stroke="var(--c-assoc)" stroke-width="1.5"/>
+          <text class="num" x="120" y="24" text-anchor="middle" fill="var(--c-assoc-ink)">A</text>
+        </g>
+
+        <g transform="translate(280, 30)">
+          <circle cx="0" cy="20" r="14" fill="var(--c-motion-bg)" stroke="var(--c-motion)" stroke-width="1.5"/>
+          <text class="num" x="0" y="24" text-anchor="middle" fill="var(--c-motion-ink)">T2</text>
+          <path d="M 18 20 L 102 20" stroke="var(--c-assoc)" stroke-width="2" marker-end="url(#m-assoc)"/>
+          <text class="lbl-dim" x="60" y="14" text-anchor="middle">cost 0.09</text>
+          <circle cx="120" cy="20" r="14" fill="var(--c-assoc-bg)" stroke="var(--c-assoc)" stroke-width="1.5"/>
+          <text class="num" x="120" y="24" text-anchor="middle" fill="var(--c-assoc-ink)">B</text>
+        </g>
+
+        <g transform="translate(500, 30)">
+          <text class="lbl" x="0" y="14" fill="var(--c-assoc-ink)" style="font-weight: 500">total cost: 0.21</text>
+          <text class="lbl-dim" x="0" y="34">vs swapped: 0.68 + 0.71 = 1.39</text>
+          <text class="lbl-dim" x="0" y="48">vs greedy from cell (2,B): same answer here,</text>
+          <text class="lbl-dim" x="0" y="62">&nbsp;&nbsp; but Hungarian guarantees the optimum globally</text>
+        </g>
+      </g>
+
+      <defs>
+        <marker id="m-assoc" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker>
+      </defs>
+    </svg>
+    <figcaption><strong>Fig 6.1</strong> Each cell is the weighted sum of IoU, Mahalanobis, and ReID costs. Hungarian (Kuhn-Munkres) finds the one-to-one assignment with the lowest total cost in O(n³) time. The shaded diagonal here is the optimum.</figcaption>
+  </figure>
+
+  <h3>Why Hungarian, not greedy</h3>
+  <p>Greedy assignment — pick the cheapest cell, remove its row and column, repeat — works when the cheapest pair is unambiguous. It fails when two tracks both have their lowest cost on the same detection: greedy commits to the first one and forces the second to a worse match. Hungarian considers the whole matrix simultaneously and reshuffles to find the global optimum.</p>
+
+  <h3>Two-stage matching</h3>
+  <p>Recent NvDCF (DeepStream 6.3+) borrows from ByteTrack: it runs the assignment <em>twice</em>.</p>
+  <ul>
+    <li><strong>Stage 1:</strong> High-confidence detections matched against active tracks. This handles 90% of the work cleanly.</li>
+    <li><strong>Stage 2:</strong> Low-confidence detections matched against the still-unmatched tracks from Stage 1. This recovers partially-occluded objects whose detections were filtered out earlier — they'd have been wasted otherwise.</li>
+  </ul>
+  <p>The threshold dividing the two stages is <code>tentativeDetectorConfidence</code>.</p>
+
+  <h3>Cost gating</h3>
+  <p>Before running Hungarian, the tracker discards cells whose cost exceeds a threshold (<code>maxMatchingCost</code>). This prevents the optimizer from making a "least bad" assignment between two unrelated objects just because no better option exists. Gated cells become "unmatched" — the track moves to shadow, the detection becomes a new tentative track.</p>
+</section>
+
+<!-- ============================================================ -->
+<!-- 7. Lifecycle -->
+<!-- ============================================================ -->
+<section id="lifecycle">
+  <div class="section-marker">
+    <span class="section-num">§ 07</span>
+    <span class="section-tag tag-mgmt">Lifecycle</span>
+  </div>
+  <h2>Target <em>lifecycle</em></h2>
+  <p class="lead">A track passes through four states. The transitions between them are the difference between a stable tracker and one that flickers identities every few frames.</p>
+
+  <figure>
+    <svg class="figure-svg" viewBox="0 0 800 280" role="img" aria-label="Target lifecycle state machine">
+      <!-- States -->
+      <g transform="translate(40, 110)">
+        <rect width="140" height="60" rx="4" fill="var(--bg-card)" stroke="var(--ink-3)" stroke-dasharray="3 2"/>
+        <text class="title-text" x="70" y="28" text-anchor="middle">Tentative</text>
+        <text class="lbl-dim" x="70" y="46" text-anchor="middle">not yet emitted</text>
+      </g>
+
+      <g transform="translate(230, 110)">
+        <rect width="140" height="60" rx="4" fill="var(--c-visual-bg)" stroke="var(--c-visual)" stroke-width="1.5"/>
+        <text class="title-text" x="70" y="28" text-anchor="middle" fill="var(--c-visual-ink)">Active</text>
+        <text class="lbl-dim" x="70" y="46" text-anchor="middle" fill="var(--c-visual-ink)">stable ID emitted</text>
+      </g>
+
+      <g transform="translate(420, 110)">
+        <rect width="140" height="60" rx="4" fill="var(--c-motion-bg)" stroke="var(--c-motion)" stroke-width="1.5" stroke-dasharray="4 2"/>
+        <text class="title-text" x="70" y="28" text-anchor="middle" fill="var(--c-motion-ink)">Shadow</text>
+        <text class="lbl-dim" x="70" y="46" text-anchor="middle" fill="var(--c-motion-ink)">predicted only</text>
+      </g>
+
+      <g transform="translate(610, 110)">
+        <rect width="140" height="60" rx="4" fill="var(--bg-deep)" stroke="var(--ink-3)"/>
+        <text class="title-text" x="70" y="28" text-anchor="middle">Terminated</text>
+        <text class="lbl-dim" x="70" y="46" text-anchor="middle">ID retired</text>
+      </g>
+
+      <!-- Transition arrows -->
+      <path d="M 180 140 L 228 140" stroke="var(--ink-2)" stroke-width="1" marker-end="url(#m-life)"/>
+      <text class="lbl-dim" x="204" y="132" text-anchor="middle">probationAge</text>
+      <text class="lbl-dim" x="204" y="156" text-anchor="middle">consecutive matches</text>
+
+      <path d="M 370 140 L 418 140" stroke="var(--ink-2)" stroke-width="1" marker-end="url(#m-life)"/>
+      <text class="lbl-dim" x="394" y="132" text-anchor="middle">unmatched</text>
+      <text class="lbl-dim" x="394" y="156" text-anchor="middle">this frame</text>
+
+      <path d="M 418 156 Q 380 200 320 175 Q 280 160 370 155" stroke="var(--c-visual)" stroke-width="1" fill="none" marker-end="url(#m-life-teal)"/>
+      <text class="lbl-dim" x="360" y="200" text-anchor="middle" fill="var(--c-visual-ink)">re-matched within</text>
+      <text class="lbl-dim" x="360" y="214" text-anchor="middle" fill="var(--c-visual-ink)">maxShadowTrackingAge</text>
+
+      <path d="M 560 140 L 608 140" stroke="var(--ink-2)" stroke-width="1" marker-end="url(#m-life)"/>
+      <text class="lbl-dim" x="584" y="132" text-anchor="middle">shadow age</text>
+      <text class="lbl-dim" x="584" y="156" text-anchor="middle">exceeded</text>
+
+      <!-- Birth arrow -->
+      <text class="lbl" x="110" y="80" text-anchor="middle">new detection</text>
+      <path d="M 110 88 L 110 108" stroke="var(--ink-2)" stroke-width="1" marker-end="url(#m-life)"/>
+
+      <!-- Death arrow from tentative -->
+      <path d="M 110 170 L 110 210" stroke="var(--ink-3)" stroke-width="1" stroke-dasharray="3 2" marker-end="url(#m-life-dim)"/>
+      <text class="lbl-dim" x="120" y="230">died young (earlyTerminationAge)</text>
+
+      <defs>
+        <marker id="m-life" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker>
+        <marker id="m-life-teal" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker>
+        <marker id="m-life-dim" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker>
+      </defs>
+    </svg>
+    <figcaption><strong>Fig 7.1</strong> Tentative tracks are not visible to downstream consumers. Only when a track survives <code>probationAge</code> matches does it get a stable <code>object_id</code> and start appearing in NvDsObjectMeta.</figcaption>
+  </figure>
+
+  <h3>Shadow mode and past-frame meta</h3>
+  <p>When an active track is unmatched for a frame, it does not die. It transitions to shadow mode, where the Kalman filter keeps predicting position frame by frame but no output is emitted. If a detection re-associates with the shadow track within <code>maxShadowTrackingAge</code> frames, the track is reactivated — and the frames spent in shadow are emitted retroactively as <code>NvDsPastFrameObjBatch</code> user-meta on the batch.</p>
+
+  <p>This retroactive emission is the reason consumers see "the same person" across a brief occlusion: the ID never changed, only the visibility did.</p>
+
+  <h3>ID stability vs ID switches</h3>
+  <p>Two failure modes pull <code>maxShadowTrackingAge</code> in opposite directions:</p>
+  <ul>
+    <li>Too <strong>low</strong>: a person walks behind a 2-second pillar, the shadow times out, and they get a new ID when they emerge. This is an <em>ID switch</em>.</li>
+    <li>Too <strong>high</strong>: target A walks behind a pillar, target B walks out from behind it. The shadow track for A re-matches with B's detection. A's identity attaches to B's body. This is also an <em>ID switch</em>, but worse — it's silently wrong rather than visibly missed.</li>
+  </ul>
+  <p>The right value depends on scene geometry (how long are typical occlusions?) and crowd density (how likely is a different object to appear in the same place?).</p>
+</section>
+
+<!-- ============================================================ -->
+<!-- 8. Pipeline -->
+<!-- ============================================================ -->
+<section id="pipeline">
+  <div class="section-marker">
+    <span class="section-num">§ 08</span>
+    <span class="section-tag tag-neutral">Synthesis</span>
+  </div>
+  <h2>The full <em>per-frame cycle</em></h2>
+  <p class="lead">Every 33 milliseconds, NvDCF executes the same eight steps. Step through them.</p>
+
+  <figure>
+    <svg class="figure-svg" viewBox="0 0 800 460" role="img" aria-label="Full per-frame cycle of NvDCF">
+      <!-- Phase 1: Predict -->
+      <g transform="translate(20, 30)">
+        <rect width="760" height="62" fill="var(--c-motion-bg)" rx="2" opacity="0.45"/>
+        <text class="lbl" x="14" y="22" fill="var(--c-motion-ink)" style="font-weight:700; letter-spacing:0.12em">01 — PREDICT</text>
+        <text class="lbl-dim" x="14" y="42">Kalman: x̂_t = F · x̂_{t-1};  P_t = F · P_{t-1} · Fᵀ + Q</text>
+        <text class="lbl-dim" x="14" y="56">→ every existing track now has a predicted bbox and an uncertainty ellipse for frame N+1</text>
+      </g>
+
+      <g transform="translate(20, 100)">
+        <rect width="760" height="62" fill="var(--c-visual-bg)" rx="2" opacity="0.45"/>
+        <text class="lbl" x="14" y="22" fill="var(--c-visual-ink)" style="font-weight:700; letter-spacing:0.12em">02 — VISUAL TRACK</text>
+        <text class="lbl-dim" x="14" y="42">For each track: extract features in search region around predicted center; correlate with filter h_i</text>
+        <text class="lbl-dim" x="14" y="56">→ each track gets a refined position + a PSR confidence</text>
+      </g>
+
+      <g transform="translate(20, 170)">
+        <rect width="760" height="62" fill="var(--c-reid-bg)" rx="2" opacity="0.45"/>
+        <text class="lbl" x="14" y="22" fill="var(--c-reid-ink)" style="font-weight:700; letter-spacing:0.12em">03 — EXTRACT (every N frames)</text>
+        <text class="lbl-dim" x="14" y="42">For each detection: crop, resize to 128×256, ReID CNN forward → 256-D embedding</text>
+        <text class="lbl-dim" x="14" y="56">→ each detection gets an identity vector to compare against track galleries</text>
+      </g>
+
+      <g transform="translate(20, 240)">
+        <rect width="760" height="62" fill="var(--c-assoc-bg)" rx="2" opacity="0.45"/>
+        <text class="lbl" x="14" y="22" fill="var(--c-assoc-ink)" style="font-weight:700; letter-spacing:0.12em">04 — ASSOCIATE</text>
+        <text class="lbl-dim" x="14" y="42">Build cost matrix C[i,j] = w_iou·(1−IoU) + w_mhd·d_M + w_reid·(1−cos);  gate by maxMatchingCost</text>
+        <text class="lbl-dim" x="14" y="56">→ Stage 1: hi-conf detections vs active tracks. Stage 2: lo-conf detections vs unmatched tracks. Hungarian on each.</text>
+      </g>
+
+      <g transform="translate(20, 310)">
+        <rect width="760" height="62" fill="var(--c-mgmt-bg)" rx="2" opacity="0.45"/>
+        <text class="lbl" x="14" y="22" fill="var(--c-mgmt-ink)" style="font-weight:700; letter-spacing:0.12em">05 — UPDATE</text>
+        <text class="lbl-dim" x="14" y="42">Matched tracks: Kalman update with detection; DCF filter learning step (η · H_new); refresh ReID gallery</text>
+        <text class="lbl-dim" x="14" y="56">Unmatched tracks → shadow.  Unmatched detections → new tentative tracks (assigned candidate object_id)</text>
+      </g>
+
+      <g transform="translate(20, 380)">
+        <rect width="760" height="62" fill="var(--bg-deep)" rx="2" opacity="0.6"/>
+        <text class="lbl" x="14" y="22" fill="var(--ink-2)" style="font-weight:700; letter-spacing:0.12em">06 — EMIT</text>
+        <text class="lbl-dim" x="14" y="42">Active tracks → NvDsObjectMeta on this frame.  Re-acquired tracks → NvDsPastFrameObjBatch user-meta retroactively.</text>
+        <text class="lbl-dim" x="14" y="56">Tentative tracks beyond probationAge → promote to active.  Shadow tracks beyond maxShadowTrackingAge → terminate.</text>
+      </g>
+    </svg>
+    <figcaption><strong>Fig 8.1</strong> One frame of the tracker's work. On Orin Nano with 30 active targets, this loop runs in roughly 8-15 ms for the perf config and 18-35 ms for the accuracy config (with ReID).</figcaption>
+  </figure>
+</section>
+
+<!-- ============================================================ -->
+<!-- 9. Knobs -->
+<!-- ============================================================ -->
+<section id="knobs">
+  <div class="section-marker">
+    <span class="section-num">§ 09</span>
+    <span class="section-tag tag-neutral">Reference</span>
+  </div>
+  <h2>DeepStream <em>config knobs</em></h2>
+  <p class="lead">The full set of YAML parameters you can tune in <code>config_tracker_NvDCF_*.yml</code>, grouped by which component they affect. Defaults are from the bundled accuracy config; the perf config differs as noted.</p>
+
+  <table class="knobs">
+    <thead>
+      <tr>
+        <th style="width: 30%">Parameter</th>
+        <th style="width: 12%">Default</th>
+        <th style="width: 58%">Effect</th>
+      </tr>
+    </thead>
+    <tbody>
+
+      <tr class="group-row"><td colspan="3">Lifecycle &amp; target management</td></tr>
+      <tr>
+        <td class="key">minDetectorConfidence</td>
+        <td class="def">0.0 – 0.7</td>
+        <td>Detector outputs below this score are discarded before reaching association. Raise to suppress noisy detections; lower to keep partially-occluded ones alive.</td>
+      </tr>
+      <tr>
+        <td class="key">minTrackerConfidence</td>
+        <td class="def">0.6</td>
+        <td>PSR threshold for the visual tracker. Below this, the track demotes to shadow even with a matched detection.</td>
+      </tr>
+      <tr>
+        <td class="key">probationAge</td>
+        <td class="def">3</td>
+        <td>Consecutive matches a tentative track needs before promotion to active. Higher = fewer false positives, more delay before first emit.</td>
+      </tr>
+      <tr>
+        <td class="key">maxShadowTrackingAge</td>
+        <td class="def">30</td>
+        <td>Frames a lost track stays in shadow before termination. The single most impactful knob for ID-switch rate.</td>
+      </tr>
+      <tr>
+        <td class="key">earlyTerminationAge</td>
+        <td class="def">1</td>
+        <td>If a tentative track fails to match for this many frames, kill it immediately (don't wait for shadow age).</td>
+      </tr>
+      <tr>
+        <td class="key">tentativeDetectorConfidence</td>
+        <td class="def">0.2</td>
+        <td>Threshold separating "high confidence" from "low confidence" detections in two-stage matching.</td>
+      </tr>
+
+      <tr class="group-row"><td colspan="3">Data association weights</td></tr>
+      <tr>
+        <td class="key">matchingScoreWeight4Iou</td>
+        <td class="def">0.4</td>
+        <td>w_iou in the cost matrix. Lower if your detector bboxes are loose or noisy; raise if IoU is highly reliable.</td>
+      </tr>
+      <tr>
+        <td class="key">matchingScoreWeight4Mhd</td>
+        <td class="def">0.4</td>
+        <td>w_mhd (Mahalanobis / motion). Raise for scenes with reliable motion (vehicles on a road), lower for erratic motion.</td>
+      </tr>
+      <tr>
+        <td class="key">matchingScoreWeight4Reid</td>
+        <td class="def">0.2</td>
+        <td>w_reid. Raise when you trust the ReID model (in-domain, well-trained); lower for generic ReID on novel objects.</td>
+      </tr>
+      <tr>
+        <td class="key">maxMatchingCost</td>
+        <td class="def">0.7</td>
+        <td>Gating threshold. Cost cells above this are forbidden from being matched even if Hungarian would prefer them.</td>
+      </tr>
+      <tr>
+        <td class="key">maxMatchingCost4VisualTrack</td>
+        <td class="def">0.6</td>
+        <td>Separate gating threshold for visual-only matching when motion / ReID aren't available.</td>
+      </tr>
+
+      <tr class="group-row"><td colspan="3">Visual tracker (DCF)</td></tr>
+      <tr>
+        <td class="key">visualTrackerType</td>
+        <td class="def">1</td>
+        <td>0 = disabled, 1 = NvDCF. Disabling falls back to motion + IoU + ReID only; useful for very fast objects where DCF can't keep up.</td>
+      </tr>
+      <tr>
+        <td class="key">filterLr</td>
+        <td class="def">0.075</td>
+        <td>DCF filter learning rate η. Low = stable, slow to adapt. High = fast adaptation, prone to drift onto occluders.</td>
+      </tr>
+      <tr>
+        <td class="key">filterChannelWeightsLr</td>
+        <td class="def">0.1</td>
+        <td>Learning rate for per-channel feature weights (which feature channels matter for this target).</td>
+      </tr>
+      <tr>
+        <td class="key">gaussianSigma</td>
+        <td class="def">0.75</td>
+        <td>Width of the ideal Gaussian response target. Smaller = sharper required peak (more discriminative, less tolerant).</td>
+      </tr>
+      <tr>
+        <td class="key">featureImgSizeLevel</td>
+        <td class="def">3</td>
+        <td>Resolution of feature extraction (0-5). Higher = more detail but more compute.</td>
+      </tr>
+      <tr>
+        <td class="key">searchRegionPaddingScale</td>
+        <td class="def">3</td>
+        <td>Search region size = bbox × this. Larger = handles faster motion, costs more correlation work.</td>
+      </tr>
+
+      <tr class="group-row"><td colspan="3">Kalman / state estimator</td></tr>
+      <tr>
+        <td class="key">useColorNames</td>
+        <td class="def">1</td>
+        <td>Include color-names features in the feature stack. Off saves compute, hurts in scenes where color is the main discriminator.</td>
+      </tr>
+      <tr>
+        <td class="key">stateEstimatorType</td>
+        <td class="def">2</td>
+        <td>0 = none, 1 = simple, 2 = regular Kalman. Use 2 unless you specifically need lower latency.</td>
+      </tr>
+      <tr>
+        <td class="key">processNoiseVar4Loc</td>
+        <td class="def">2.0</td>
+        <td>Q for position. Raise for jerky / unpredictable motion; lower for smooth motion.</td>
+      </tr>
+      <tr>
+        <td class="key">processNoiseVar4Vel</td>
+        <td class="def">0.1</td>
+        <td>Q for velocity. Controls how quickly the model accepts changes in direction or speed.</td>
+      </tr>
+      <tr>
+        <td class="key">measurementNoiseVar4Detector</td>
+        <td class="def">4.0</td>
+        <td>How much to trust the detector's bbox. Higher = less trust, more reliance on prediction.</td>
+      </tr>
+      <tr>
+        <td class="key">measurementNoiseVar4Tracker</td>
+        <td class="def">16.0</td>
+        <td>How much to trust the DCF position. Generally higher than the detector noise (DCF is a refinement, not a primary measurement).</td>
+      </tr>
+
+      <tr class="group-row"><td colspan="3">ReID (accuracy config only)</td></tr>
+      <tr>
+        <td class="key">reidType</td>
+        <td class="def">1</td>
+        <td>0 = disabled, 1 = enabled. Disabled in the perf config.</td>
+      </tr>
+      <tr>
+        <td class="key">reidExtractionInterval</td>
+        <td class="def">0</td>
+        <td>Run ReID every N frames per target. 0 = every frame. Set to 3-5 on Orin Nano to keep latency reasonable.</td>
+      </tr>
+      <tr>
+        <td class="key">batchSize</td>
+        <td class="def">100</td>
+        <td>Max ReID inferences per batch. Bigger = better GPU utilisation but higher peak memory.</td>
+      </tr>
+      <tr>
+        <td class="key">reidHistorySize</td>
+        <td class="def">100</td>
+        <td>How many past embeddings per track to keep in the gallery. Larger = more robust similarity, more memory.</td>
+      </tr>
+      <tr>
+        <td class="key">reidFeatureSize</td>
+        <td class="def">256</td>
+        <td>Embedding dimensionality. Must match the deployed model.</td>
+      </tr>
+      <tr>
+        <td class="key">modelEngineFile</td>
+        <td class="def">resnet50_market1501.etlt</td>
+        <td>Path to the ReID model. Replace with your own for domain-specific tasks (vehicles, livestock, etc.).</td>
+      </tr>
+
+      <tr class="group-row"><td colspan="3">Pipeline-level (Gst-nvtracker element)</td></tr>
+      <tr>
+        <td class="key">tracker-width</td>
+        <td class="def">960</td>
+        <td>Width of input to tracker. Must match tracker config's expectation.</td>
+      </tr>
+      <tr>
+        <td class="key">tracker-height</td>
+        <td class="def">544</td>
+        <td>Height of input to tracker.</td>
+      </tr>
+      <tr>
+        <td class="key">ll-lib-file</td>
+        <td class="def">libnvds_nvmultiobjecttracker.so</td>
+        <td>Low-level tracker library. The unified library since DS 6.2.</td>
+      </tr>
+      <tr>
+        <td class="key">ll-config-file</td>
+        <td class="def">config_tracker_NvDCF_accuracy.yml</td>
+        <td>The tracker YAML. Swap for <code>NvDCF_perf.yml</code> or <code>NvDeepSORT.yml</code> or your own.</td>
+      </tr>
+      <tr>
+        <td class="key">enable-past-frame</td>
+        <td class="def">1</td>
+        <td>Emit retroactive NvDsPastFrameObjBatch user-meta when a shadow track re-activates.</td>
+      </tr>
+      <tr>
+        <td class="key">enable-batch-process</td>
+        <td class="def">1</td>
+        <td>Process batched frames from multiple streams in one tracker call. Required for muxed pipelines.</td>
+      </tr>
+      <tr>
+        <td class="key">display-tracking-id</td>
+        <td class="def">1</td>
+        <td>Render the object_id as part of the OSD label.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>Tuning workflow</h3>
+  <ol>
+    <li>Start with the bundled <code>config_tracker_NvDCF_accuracy.yml</code> unchanged. Run on a representative clip.</li>
+    <li>Measure ID switches per object-minute on your scene. If under 1, stop — you're done.</li>
+    <li>If switches are high, first sweep <code>maxShadowTrackingAge</code> (try 15, 30, 60, 90). Most scenes have a clear optimum.</li>
+    <li>If switches persist on fast motion, raise <code>processNoiseVar4Loc</code> (Kalman accepts faster movement).</li>
+    <li>If switches persist on visually similar objects, raise <code>matchingScoreWeight4Reid</code> at the cost of <code>matchingScoreWeight4Iou</code>.</li>
+    <li>If latency is too high, switch to perf config and set <code>reidExtractionInterval = 5</code> as a starting point.</li>
+  </ol>
+</section>
+
+<footer class="doc">
+  <span>NvDCF · DeepStream Gst-nvtracker · technical note</span>
+  <span>references: nvds_tracker_meta.h · NvMultiObjectTracker · ByteTrack (Zhang et al. 2021) · Market-1501</span>
+</footer>
+
+</article>
+</body>
+</html>

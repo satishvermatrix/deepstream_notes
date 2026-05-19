@@ -1,0 +1,1396 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>DeepStream VSS Pipeline Architecture</title>
+  <style>
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    span.underline{text-decoration: underline;}
+    div.column{display: inline-block; vertical-align: top; width: 50%;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    ul.task-list{list-style: none;}
+    pre > code.sourceCode { white-space: pre; position: relative; }
+    pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+    pre > code.sourceCode > span:empty { height: 1.2em; }
+    .sourceCode { overflow: visible; }
+    code.sourceCode > span { color: inherit; text-decoration: inherit; }
+    div.sourceCode { margin: 1em 0; }
+    pre.sourceCode { margin: 0; }
+    @media screen {
+    div.sourceCode { overflow: auto; }
+    }
+    @media print {
+    pre > code.sourceCode { white-space: pre-wrap; }
+    pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+    }
+    pre.numberSource code
+      { counter-reset: source-line 0; }
+    pre.numberSource code > span
+      { position: relative; left: -4em; counter-increment: source-line; }
+    pre.numberSource code > span > a:first-child::before
+      { content: counter(source-line);
+        position: relative; left: -1em; text-align: right; vertical-align: baseline;
+        border: none; display: inline-block;
+        -webkit-touch-callout: none; -webkit-user-select: none;
+        -khtml-user-select: none; -moz-user-select: none;
+        -ms-user-select: none; user-select: none;
+        padding: 0 4px; width: 4em;
+        color: #aaaaaa;
+      }
+    pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+    div.sourceCode
+      {  background-color: #f8f8f8; }
+    @media screen {
+    pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+    }
+    code span.al { color: #ef2929; } /* Alert */
+    code span.an { color: #8f5902; font-weight: bold; font-style: italic; } /* Annotation */
+    code span.at { color: #c4a000; } /* Attribute */
+    code span.bn { color: #0000cf; } /* BaseN */
+    code span.cf { color: #204a87; font-weight: bold; } /* ControlFlow */
+    code span.ch { color: #4e9a06; } /* Char */
+    code span.cn { color: #000000; } /* Constant */
+    code span.co { color: #8f5902; font-style: italic; } /* Comment */
+    code span.cv { color: #8f5902; font-weight: bold; font-style: italic; } /* CommentVar */
+    code span.do { color: #8f5902; font-weight: bold; font-style: italic; } /* Documentation */
+    code span.dt { color: #204a87; } /* DataType */
+    code span.dv { color: #0000cf; } /* DecVal */
+    code span.er { color: #a40000; font-weight: bold; } /* Error */
+    code span.ex { } /* Extension */
+    code span.fl { color: #0000cf; } /* Float */
+    code span.fu { color: #000000; } /* Function */
+    code span.im { } /* Import */
+    code span.in { color: #8f5902; font-weight: bold; font-style: italic; } /* Information */
+    code span.kw { color: #204a87; font-weight: bold; } /* Keyword */
+    code span.op { color: #ce5c00; font-weight: bold; } /* Operator */
+    code span.ot { color: #8f5902; } /* Other */
+    code span.pp { color: #8f5902; font-style: italic; } /* Preprocessor */
+    code span.sc { color: #000000; } /* SpecialChar */
+    code span.ss { color: #4e9a06; } /* SpecialString */
+    code span.st { color: #4e9a06; } /* String */
+    code span.va { color: #000000; } /* Variable */
+    code span.vs { color: #4e9a06; } /* VerbatimString */
+    code span.wa { color: #8f5902; font-weight: bold; font-style: italic; } /* Warning */
+    .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+  </style>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.2.0/github-markdown.min.css" />
+  <!--[if lt IE 9]>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/html5shiv/3.7.3/html5shiv-printshiv.min.js"></script>
+  <![endif]-->
+</head>
+<body>
+<header id="title-block-header">
+<h1 class="title">DeepStream VSS Pipeline Architecture</h1>
+</header>
+<h1 id="deepstream-vss-pipeline-architecture">DeepStream VSS Pipeline Architecture</h1>
+<p>Production-grade architecture for multi-camera video analytics with Detection, Tracking, ReID, License Plate OCR, and top-frame/crop extraction — all metadata flowing to Kafka.</p>
+<hr />
+<h2 id="design-principles">Design Principles</h2>
+<ul>
+<li><strong>DeepStream owns what only DeepStream can do</strong>: GPU inference, frame-synchronized tracking, raw pixel access</li>
+<li><strong>One probe, fire-and-forget</strong>: the pipeline thread never blocks on I/O or encoding</li>
+<li><strong>Thin pipeline, smart consumers</strong>: detection and tracking in DeepStream; ReID, OCR, aggregation downstream</li>
+<li><strong>Crops never go through nvmsgconv</strong>: binary/image data takes the custom producer path</li>
+<li><strong>Bounded queues with drop policy</strong>: lose crops before losing frames</li>
+</ul>
+<hr />
+<h2 id="full-architecture">Full Architecture</h2>
+<pre><code>╔══════════════════════════════════════════════════════════════════════════════════════╗
+║                          VIDEO SOURCES (N cameras)                                   ║
+║         [RTSP/File cam-0]  [RTSP/File cam-1]  ...  [RTSP/File cam-N]               ║
+╚══════════════════╦═════════════════════════════════════════════════════════════════════╝
+                   ║  uridecodebin × N
+                   ▼
+╔══════════════════════════════════════════════════════════════════════════════════════╗
+║                        DEEPSTREAM PIPELINE  (GPU thread)                             ║
+║                                                                                      ║
+║   [nvstreammux]                                                                      ║
+║        │  batched frames                                                             ║
+║        ▼                                                                             ║
+║   [nvinfer]  ─── Primary Detector                                                   ║
+║        │         (person / vehicle / face)                                           ║
+║        ▼                                                                             ║
+║   [nvtracker]  ── NvDCF / ByteTrack                                                 ║
+║        │          assigns track_id, maintains state                                  ║
+║        ▼                                                                             ║
+║   [nvinfer]  ─── Secondary Detector                                                 ║
+║        │         LP bbox only  (no OCR here)                                        ║
+║        │                                                                             ║
+║        ▼                                                                             ║
+║   ┌─────────────────────────────────────────────────────┐                           ║
+║   │         UNIFIED SINK PAD PROBE  (one probe only)    │                           ║
+║   │                                                      │                           ║
+║   │  for each obj_meta in batch:                        │                           ║
+║   │    • compute quality_score  (fast heuristic)        │                           ║
+║   │    • push CropTask → ASYNC QUEUE  (non-blocking)    │                           ║
+║   │    • attach NvDsEventMsgMeta  (for nvmsgconv)       │                           ║
+║   │    • emit TRACK_NEW / TRACK_LOST signals             │                           ║
+║   │      → push TrackEvent → ASYNC QUEUE                │                           ║
+║   └───────────────┬──────────────────────────────────────┘                          ║
+║                   │  returns immediately                                             ║
+║                   ▼                                                                  ║
+║   [nvmsgconv]  +  [nvmsgbroker]                                                     ║
+║        │          libnvds_kafka_proto.so                                             ║
+║        │          NvDsEventMsgMeta → JSON                                           ║
+╚════════╬═════════════════════════════════════════════════════════════════════════════╝
+         │
+         │ (sync, low-latency path)
+         ▼
+topic: vss.detections
+  { stream_id, frame_num, ts, track_id, class,
+    bbox, confidence, pipeline_instance_id }
+
+
+╔══════════════════════════════════════════════════════════════════════════════════════╗
+║                     ASYNC LAYER  (separate thread pool, same process)               ║
+║                                                                                      ║
+║   ┌─────────────────────────────────────────────────────────────────────┐           ║
+║   │  ASYNC QUEUE  (bounded, e.g. maxsize=2000, drop-on-full policy)    │           ║
+║   │                                                                      │           ║
+║   │   CropTask  { surface_ref, obj_meta_copy, frame_meta_copy }        │           ║
+║   │   TrackEvent{ track_id, event_type, stream_id, ts }                │           ║
+║   └──────────────────────┬───────────────────────────────────────────── ┘           ║
+║                           │                                                          ║
+║            ┌──────────────┴──────────────────────┐                                 ║
+║            ▼                                      ▼                                 ║
+║   ┌─────────────────────┐             ┌────────────────────────┐                   ║
+║   │  CROP WORKER POOL   │             │  TRACK EVENT WORKER    │                   ║
+║   │  (N threads / async)│             │  (single thread, stateful)                 │
+║   │                     │             │                        │                   ║
+║   │ • GPU→CPU copy      │             │ • TRACK_NEW            │                   ║
+║   │ • JPEG encode       │             │   → init track buffer  │                   ║
+║   │ • route by class:   │             │ • TRACK_UPDATE         │                   ║
+║   │   person → crops    │             │   → update last seen   │                   ║
+║   │   vehicle → crops   │             │ • TRACK_LOST           │                   ║
+║   │   LP region → lp    │             │   → flush top-1/top-K  │                   ║
+║   └──────────┬──────────┘             └────────────┬───────────┘                   ║
+╚══════════════╬═══════════════════════════════════════╬═══════════════════════════════╝
+               │                                       │
+    ┌──────────┴───────────┐               ┌───────────┴────────────┐
+    ▼                      ▼               ▼                        ▼
+topic:              topic:           topic:                   topic:
+vss.objects.crops   vss.lp.crops     vss.tracks.events        vss.tracks.summary
+                                     (on TRACK_LOST only)
+
+
+╔══════════════════════════════════════════════════════════════════════════════════════╗
+║                              KAFKA  (topics)                                         ║
+║                                                                                      ║
+║  Ingest topics                                                                       ║
+║   vss.detections       vss.objects.crops    vss.lp.crops                            ║
+║   vss.tracks.events    vss.tracks.summary                                           ║
+║                                                                                      ║
+║  Output topics                                                                       ║
+║   vss.reid.matches     vss.lp.results       vss.alerts                              ║
+╚══════════╦══════════════════════╦═══════════════════════╦════════════════════════════╝
+           │                      │                        │
+     ┌─────┘              ┌───────┘                ┌───────┘
+     ▼                    ▼                         ▼
+
+╔═══════════════╗  ╔═══════════════════╗  ╔══════════════════════════════════════╗
+║  REID         ║  ║  LP OCR CONSUMER  ║  ║  TRACK AGGREGATOR CONSUMER          ║
+║  CONSUMER     ║  ║                   ║  ║                                      ║
+║               ║  ║ in: vss.lp.crops  ║  ║ in: vss.objects.crops               ║
+║ in:           ║  ║                   ║  ║     vss.tracks.events                ║
+║ vss.objects   ║  ║ • PaddleOCR       ║  ║     vss.tracks.summary               ║
+║ .crops        ║  ║   or TRT-OCR      ║  ║                                      ║
+║               ║  ║ • normalize plate ║  ║ • accumulate crops per track_id      ║
+║ • extract     ║  ║   string          ║  ║   in bounded heap (maxsize=50)       ║
+║   embeddings  ║  ║ • confidence      ║  ║ • rank by quality_score              ║
+║   (CLIP/OSNet)║  ║   threshold       ║  ║ • on TRACK_LOST:                     ║
+║ • FAISS/Redis ║  ║                   ║  ║   emit top-1 frame + top-K crops     ║
+║   gallery     ║  ║ out:              ║  ║   to vss.tracks.summary              ║
+║   per zone    ║  ║ vss.lp.results    ║  ║                                      ║
+║               ║  ║ { plate_str,      ║  ║ state: Redis hash                    ║
+║ • cross-cam   ║  ║   confidence,     ║  ║   key: track_id                      ║
+║   match       ║  ║   track_id,       ║  ║   val: heap of (score, s3_key)       ║
+║               ║  ║   stream_id, ts } ║  ║                                      ║
+║ out:          ║  ╚═══════════════════╝  ╚══════════════════════════════════════╝
+║ vss.reid      ║
+║ .matches      ║  ╔═══════════════════════════════════════════════════════════════╗
+║ { person_id,  ║  ║  ANALYTICS / STORAGE CONSUMER                                ║
+║   track_ids[] ║  ║                                                               ║
+║   streams[]   ║  ║  in: vss.detections + vss.tracks.summary + vss.reid.matches  ║
+║   confidence  ║  ║      + vss.lp.results                                         ║
+║   ts }        ║  ║                                                               ║
+╚═══════════════╝  ║  • write to TimescaleDB / Elasticsearch / S3                 ║
+                   ║  • trigger alerts (dwell time, zone crossing, LP watchlist)   ║
+                   ║  • feed dashboard (Grafana / custom UI)                       ║
+                   ╚═══════════════════════════════════════════════════════════════╝</code></pre>
+<hr />
+<h2 id="task-split-pipeline-vs-consumer">Task Split: Pipeline vs Consumer</h2>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Feature</th>
+<th>Where</th>
+<th>Reason</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Primary Detection</td>
+<td>DeepStream (nvinfer)</td>
+<td>Batched GPU inference; feeds tracker</td>
+</tr>
+<tr class="even">
+<td>Tracking</td>
+<td>DeepStream (nvtracker)</td>
+<td>Frame-synchronous; needs consecutive frames</td>
+</tr>
+<tr class="odd">
+<td>LP Detection (bbox)</td>
+<td>DeepStream (secondary nvinfer)</td>
+<td>Needs primary bbox context; GPU-batched</td>
+</tr>
+<tr class="even">
+<td>LP OCR</td>
+<td>LP OCR Consumer</td>
+<td>Text recognition is latency-tolerant; scale independently</td>
+</tr>
+<tr class="odd">
+<td>ReID</td>
+<td>ReID Consumer</td>
+<td>Needs gallery state; latency-tolerant</td>
+</tr>
+<tr class="even">
+<td>Top frame per track</td>
+<td>Track Aggregator Consumer</td>
+<td>Score and pick from buffered crops on TRACK_LOST</td>
+</tr>
+<tr class="odd">
+<td>Top-K crops per track</td>
+<td>Track Aggregator Consumer</td>
+<td>Accumulate, rank, emit on TRACK_LOST</td>
+</tr>
+<tr class="even">
+<td>Track lifecycle events</td>
+<td>Track Aggregator Consumer</td>
+<td>Stateful aggregation on Kafka-compacted topic</td>
+</tr>
+<tr class="odd">
+<td>Alerts / storage</td>
+<td>Analytics Consumer</td>
+<td>Terminal output; no GPU needed</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="kafka-topics">Kafka Topics</h2>
+<h3 id="ingest-topics-written-by-pipeline">Ingest Topics (written by pipeline)</h3>
+<table>
+<colgroup>
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Topic</th>
+<th>Producer</th>
+<th>Key</th>
+<th>Payload</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>vss.detections</code></td>
+<td>nvmsgbroker</td>
+<td><code>stream_id:frame_num</code></td>
+<td><code>{ stream_id, frame_num, ts, track_id, class, bbox, confidence, pipeline_instance_id }</code></td>
+</tr>
+<tr class="even">
+<td><code>vss.objects.crops</code></td>
+<td>custom librdkafka</td>
+<td><code>track_id</code></td>
+<td><code>{ stream_id, frame_num, ts, track_id, class, bbox, quality_score, crop_jpeg \| s3_key }</code></td>
+</tr>
+<tr class="odd">
+<td><code>vss.lp.crops</code></td>
+<td>custom librdkafka</td>
+<td><code>track_id</code></td>
+<td><code>{ lp_crop_jpeg \| s3_key, track_id, stream_id, ts }</code></td>
+</tr>
+<tr class="even">
+<td><code>vss.tracks.events</code></td>
+<td>async track worker</td>
+<td><code>track_id</code></td>
+<td><code>{ stream_id, track_id, event: NEW\|UPDATE\|LOST, ts, bbox }</code></td>
+</tr>
+<tr class="odd">
+<td><code>vss.tracks.summary</code></td>
+<td>async track worker</td>
+<td><code>track_id</code></td>
+<td><code>{ track_id, stream_id, duration_ms, top_1_crop, top_k_crops[], first_seen, last_seen }</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="output-topics-written-by-consumers">Output Topics (written by consumers)</h3>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Topic</th>
+<th>Producer</th>
+<th>Payload</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>vss.reid.matches</code></td>
+<td>ReID Consumer</td>
+<td><code>{ person_id, track_ids[], streams[], confidence, ts }</code></td>
+</tr>
+<tr class="even">
+<td><code>vss.lp.results</code></td>
+<td>LP OCR Consumer</td>
+<td><code>{ plate_str, confidence, track_id, stream_id, ts }</code></td>
+</tr>
+<tr class="odd">
+<td><code>vss.alerts</code></td>
+<td>Analytics Consumer</td>
+<td><code>{ alert_type, track_id, stream_id, detail, ts }</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="probe-implementation">Probe Implementation</h2>
+<p>One probe on the sink pad of the secondary detector. Returns immediately — no blocking I/O.</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode python"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> unified_probe(pad, info, u_data):</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    batch_meta <span class="op">=</span> pyds.gst_buffer_get_nvds_batch_meta(info.get_buffer())</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> frame_meta <span class="kw">in</span> nvds_frame_meta_list(batch_meta):</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> obj_meta <span class="kw">in</span> nvds_obj_meta_list(frame_meta):</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>            quality_score <span class="op">=</span> (</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>                obj_meta.confidence</span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>                <span class="op">*</span> <span class="bu">min</span>(obj_meta.rect_params.width <span class="op">*</span> obj_meta.rect_params.height, <span class="fl">1.0</span>)</span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>            )</span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>            <span class="co"># Push crop task to bounded async queue (non-blocking)</span></span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>            <span class="cf">try</span>:</span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>                crop_queue.put_nowait(CropTask(</span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a>                    surface_ref  <span class="op">=</span> get_surface_ref(info, frame_meta),</span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a>                    obj_meta     <span class="op">=</span> copy_obj_meta(obj_meta),</span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a>                    frame_meta   <span class="op">=</span> copy_frame_meta(frame_meta),</span>
+<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a>                    quality_score<span class="op">=</span> quality_score,</span>
+<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a>                ))</span>
+<span id="cb2-20"><a href="#cb2-20" aria-hidden="true" tabindex="-1"></a>            <span class="cf">except</span> asyncio.QueueFull:</span>
+<span id="cb2-21"><a href="#cb2-21" aria-hidden="true" tabindex="-1"></a>                metrics.increment(<span class="st">&quot;crop_queue.dropped&quot;</span>)</span>
+<span id="cb2-22"><a href="#cb2-22" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-23"><a href="#cb2-23" aria-hidden="true" tabindex="-1"></a>            <span class="co"># Attach NvDsEventMsgMeta for nvmsgconv (metadata only, no pixels)</span></span>
+<span id="cb2-24"><a href="#cb2-24" aria-hidden="true" tabindex="-1"></a>            attach_event_msg_meta(batch_meta, frame_meta, obj_meta)</span>
+<span id="cb2-25"><a href="#cb2-25" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-26"><a href="#cb2-26" aria-hidden="true" tabindex="-1"></a>            <span class="co"># Emit track lifecycle events</span></span>
+<span id="cb2-27"><a href="#cb2-27" aria-hidden="true" tabindex="-1"></a>            <span class="cf">if</span> is_new_track(obj_meta.object_id):</span>
+<span id="cb2-28"><a href="#cb2-28" aria-hidden="true" tabindex="-1"></a>                track_queue.put_nowait(TrackEvent(</span>
+<span id="cb2-29"><a href="#cb2-29" aria-hidden="true" tabindex="-1"></a>                    track_id   <span class="op">=</span> obj_meta.object_id,</span>
+<span id="cb2-30"><a href="#cb2-30" aria-hidden="true" tabindex="-1"></a>                    event_type <span class="op">=</span> <span class="st">&quot;NEW&quot;</span>,</span>
+<span id="cb2-31"><a href="#cb2-31" aria-hidden="true" tabindex="-1"></a>                    stream_id  <span class="op">=</span> frame_meta.source_id,</span>
+<span id="cb2-32"><a href="#cb2-32" aria-hidden="true" tabindex="-1"></a>                    ts         <span class="op">=</span> frame_meta.ntp_timestamp,</span>
+<span id="cb2-33"><a href="#cb2-33" aria-hidden="true" tabindex="-1"></a>                ))</span>
+<span id="cb2-34"><a href="#cb2-34" aria-hidden="true" tabindex="-1"></a>            <span class="cf">elif</span> is_lost_track(obj_meta.object_id):</span>
+<span id="cb2-35"><a href="#cb2-35" aria-hidden="true" tabindex="-1"></a>                track_queue.put_nowait(TrackEvent(</span>
+<span id="cb2-36"><a href="#cb2-36" aria-hidden="true" tabindex="-1"></a>                    track_id   <span class="op">=</span> obj_meta.object_id,</span>
+<span id="cb2-37"><a href="#cb2-37" aria-hidden="true" tabindex="-1"></a>                    event_type <span class="op">=</span> <span class="st">&quot;LOST&quot;</span>,</span>
+<span id="cb2-38"><a href="#cb2-38" aria-hidden="true" tabindex="-1"></a>                    stream_id  <span class="op">=</span> frame_meta.source_id,</span>
+<span id="cb2-39"><a href="#cb2-39" aria-hidden="true" tabindex="-1"></a>                    ts         <span class="op">=</span> frame_meta.ntp_timestamp,</span>
+<span id="cb2-40"><a href="#cb2-40" aria-hidden="true" tabindex="-1"></a>                ))</span>
+<span id="cb2-41"><a href="#cb2-41" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-42"><a href="#cb2-42" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> Gst.PadProbeReturn.OK</span></code></pre></div>
+<hr />
+<h2 id="async-crop-worker">Async Crop Worker</h2>
+<div class="sourceCode" id="cb3"><pre class="sourceCode python"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> crop_worker(crop_queue: asyncio.Queue, producer: AIOKafkaProducer):</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">while</span> <span class="va">True</span>:</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>        task: CropTask <span class="op">=</span> <span class="cf">await</span> crop_queue.get()</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>        <span class="cf">try</span>:</span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>            <span class="co"># GPU → CPU transfer + JPEG encode (only blocking work)</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>            jpeg_bytes <span class="op">=</span> <span class="cf">await</span> asyncio.to_thread(</span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>                extract_and_encode_crop,</span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>                task.surface_ref,</span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>                task.obj_meta,</span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a>            )</span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a>            s3_key <span class="op">=</span> <span class="va">None</span></span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a>            <span class="cf">if</span> <span class="bu">len</span>(jpeg_bytes) <span class="op">&gt;</span> INLINE_CROP_THRESHOLD:</span>
+<span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a>                s3_key <span class="op">=</span> <span class="cf">await</span> upload_to_s3(jpeg_bytes, task)</span>
+<span id="cb3-16"><a href="#cb3-16" aria-hidden="true" tabindex="-1"></a>                jpeg_bytes <span class="op">=</span> <span class="va">None</span></span>
+<span id="cb3-17"><a href="#cb3-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-18"><a href="#cb3-18" aria-hidden="true" tabindex="-1"></a>            topic <span class="op">=</span> <span class="st">&quot;vss.lp.crops&quot;</span> <span class="cf">if</span> task.obj_meta.class_id <span class="op">==</span> LP_CLASS <span class="cf">else</span> <span class="st">&quot;vss.objects.crops&quot;</span></span>
+<span id="cb3-19"><a href="#cb3-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-20"><a href="#cb3-20" aria-hidden="true" tabindex="-1"></a>            <span class="cf">await</span> producer.send(topic, value<span class="op">=</span>{</span>
+<span id="cb3-21"><a href="#cb3-21" aria-hidden="true" tabindex="-1"></a>                <span class="st">&quot;stream_id&quot;</span>    : task.frame_meta.source_id,</span>
+<span id="cb3-22"><a href="#cb3-22" aria-hidden="true" tabindex="-1"></a>                <span class="st">&quot;frame_num&quot;</span>    : task.frame_meta.frame_num,</span>
+<span id="cb3-23"><a href="#cb3-23" aria-hidden="true" tabindex="-1"></a>                <span class="st">&quot;ts&quot;</span>           : task.frame_meta.ntp_timestamp,</span>
+<span id="cb3-24"><a href="#cb3-24" aria-hidden="true" tabindex="-1"></a>                <span class="st">&quot;track_id&quot;</span>     : task.obj_meta.object_id,</span>
+<span id="cb3-25"><a href="#cb3-25" aria-hidden="true" tabindex="-1"></a>                <span class="st">&quot;class_id&quot;</span>     : task.obj_meta.class_id,</span>
+<span id="cb3-26"><a href="#cb3-26" aria-hidden="true" tabindex="-1"></a>                <span class="st">&quot;bbox&quot;</span>         : extract_bbox(task.obj_meta),</span>
+<span id="cb3-27"><a href="#cb3-27" aria-hidden="true" tabindex="-1"></a>                <span class="st">&quot;quality_score&quot;</span>: task.quality_score,</span>
+<span id="cb3-28"><a href="#cb3-28" aria-hidden="true" tabindex="-1"></a>                <span class="st">&quot;crop_jpeg&quot;</span>    : b64encode(jpeg_bytes) <span class="cf">if</span> jpeg_bytes <span class="cf">else</span> <span class="va">None</span>,</span>
+<span id="cb3-29"><a href="#cb3-29" aria-hidden="true" tabindex="-1"></a>                <span class="st">&quot;s3_key&quot;</span>       : s3_key,</span>
+<span id="cb3-30"><a href="#cb3-30" aria-hidden="true" tabindex="-1"></a>                <span class="st">&quot;pipeline_id&quot;</span>  : PIPELINE_INSTANCE_ID,</span>
+<span id="cb3-31"><a href="#cb3-31" aria-hidden="true" tabindex="-1"></a>            })</span>
+<span id="cb3-32"><a href="#cb3-32" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-33"><a href="#cb3-33" aria-hidden="true" tabindex="-1"></a>        <span class="cf">except</span> <span class="pp">Exception</span> <span class="im">as</span> e:</span>
+<span id="cb3-34"><a href="#cb3-34" aria-hidden="true" tabindex="-1"></a>            log.error(<span class="st">&quot;crop_worker failed: </span><span class="sc">%s</span><span class="st">&quot;</span>, e)</span>
+<span id="cb3-35"><a href="#cb3-35" aria-hidden="true" tabindex="-1"></a>            metrics.increment(<span class="st">&quot;crop_worker.errors&quot;</span>)</span>
+<span id="cb3-36"><a href="#cb3-36" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-37"><a href="#cb3-37" aria-hidden="true" tabindex="-1"></a>        <span class="cf">finally</span>:</span>
+<span id="cb3-38"><a href="#cb3-38" aria-hidden="true" tabindex="-1"></a>            crop_queue.task_done()</span></code></pre></div>
+<hr />
+<h2 id="track-aggregator-consumer-top-frame-top-k">Track Aggregator Consumer (Top Frame / Top-K)</h2>
+<div class="sourceCode" id="cb4"><pre class="sourceCode python"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> TrackAggregator:</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> <span class="fu">__init__</span>(<span class="va">self</span>, k: <span class="bu">int</span> <span class="op">=</span> <span class="dv">5</span>, max_buffer: <span class="bu">int</span> <span class="op">=</span> <span class="dv">50</span>):</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.k <span class="op">=</span> k</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.max_buffer <span class="op">=</span> max_buffer</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.buffers: <span class="bu">dict</span>[<span class="bu">str</span>, <span class="bu">list</span>] <span class="op">=</span> defaultdict(<span class="bu">list</span>)  <span class="co"># track_id → heap</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> on_crop(<span class="va">self</span>, msg: <span class="bu">dict</span>):</span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>        tid <span class="op">=</span> msg[<span class="st">&quot;track_id&quot;</span>]</span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>        heap <span class="op">=</span> <span class="va">self</span>.buffers[tid]</span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a>        heapq.heappush(heap, (msg[<span class="st">&quot;quality_score&quot;</span>], msg[<span class="st">&quot;crop_jpeg&quot;</span>] <span class="kw">or</span> msg[<span class="st">&quot;s3_key&quot;</span>], msg[<span class="st">&quot;ts&quot;</span>]))</span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> <span class="bu">len</span>(heap) <span class="op">&gt;</span> <span class="va">self</span>.max_buffer:</span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a>            heapq.heappop(heap)  <span class="co"># drop lowest-quality</span></span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> on_track_lost(<span class="va">self</span>, event: <span class="bu">dict</span>):</span>
+<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a>        tid <span class="op">=</span> event[<span class="st">&quot;track_id&quot;</span>]</span>
+<span id="cb4-16"><a href="#cb4-16" aria-hidden="true" tabindex="-1"></a>        crops <span class="op">=</span> <span class="bu">sorted</span>(<span class="va">self</span>.buffers.pop(tid, []), reverse<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb4-17"><a href="#cb4-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-18"><a href="#cb4-18" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> <span class="kw">not</span> crops:</span>
+<span id="cb4-19"><a href="#cb4-19" aria-hidden="true" tabindex="-1"></a>            <span class="cf">return</span></span>
+<span id="cb4-20"><a href="#cb4-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-21"><a href="#cb4-21" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.kafka_producer.send(<span class="st">&quot;vss.tracks.summary&quot;</span>, {</span>
+<span id="cb4-22"><a href="#cb4-22" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;track_id&quot;</span>   : tid,</span>
+<span id="cb4-23"><a href="#cb4-23" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;stream_id&quot;</span>  : event[<span class="st">&quot;stream_id&quot;</span>],</span>
+<span id="cb4-24"><a href="#cb4-24" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;duration_ms&quot;</span>: event[<span class="st">&quot;duration_ms&quot;</span>],</span>
+<span id="cb4-25"><a href="#cb4-25" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;top_1_crop&quot;</span> : crops[<span class="dv">0</span>],</span>
+<span id="cb4-26"><a href="#cb4-26" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;top_k_crops&quot;</span>: crops[:<span class="va">self</span>.k],</span>
+<span id="cb4-27"><a href="#cb4-27" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;first_seen&quot;</span> : event[<span class="st">&quot;first_seen&quot;</span>],</span>
+<span id="cb4-28"><a href="#cb4-28" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;last_seen&quot;</span>  : event[<span class="st">&quot;ts&quot;</span>],</span>
+<span id="cb4-29"><a href="#cb4-29" aria-hidden="true" tabindex="-1"></a>        })</span></code></pre></div>
+<hr />
+<h2 id="nvmsgconv-nvmsgbroker-detections-path">nvmsgconv + nvmsgbroker (Detections Path)</h2>
+<p>Use the NVIDIA-managed path for pure metadata — no custom code needed here.</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="co"># pipeline fragment (GStreamer / DeepStream config)</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="ex">nvmsgconv</span> config-file=msgconv_config.txt msg2p-newapi=1 ! <span class="dt">\</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>nvmsgbroker proto-lib=/opt/nvidia/deepstream/deepstream/lib/libnvds_kafka_proto.so <span class="dt">\</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>            conn-str=<span class="st">&quot;kafka-broker:9092&quot;</span> <span class="dt">\</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>            topic=<span class="st">&quot;vss.detections&quot;</span> <span class="dt">\</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>            sync=false</span></code></pre></div>
+<div class="sourceCode" id="cb6"><pre class="sourceCode ini"><code class="sourceCode ini"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="co"># msgconv_config.txt</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="kw">[sensor0]</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="dt">enable</span><span class="ot">=</span><span class="dv">1</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="dt">type</span><span class="ot">=</span><span class="st">Camera</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a><span class="dt">id</span><span class="ot">=</span><span class="st">camera</span><span class="dv">-0</span></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a><span class="dt">location</span><span class="ot">=</span><span class="st">site-a/entrance</span></span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a><span class="dt">description</span><span class="ot">=</span><span class="st">Entrance Camera</span></span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a><span class="kw">[place0]</span></span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a><span class="dt">enable</span><span class="ot">=</span><span class="dv">1</span></span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a><span class="dt">type</span><span class="ot">=</span><span class="dv">0</span></span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a><span class="dt">id</span><span class="ot">=</span><span class="st">place</span><span class="dv">-0</span></span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a><span class="dt">name</span><span class="ot">=</span><span class="st">entrance</span></span>
+<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-15"><a href="#cb6-15" aria-hidden="true" tabindex="-1"></a><span class="kw">[analytics0]</span></span>
+<span id="cb6-16"><a href="#cb6-16" aria-hidden="true" tabindex="-1"></a><span class="dt">enable</span><span class="ot">=</span><span class="dv">1</span></span>
+<span id="cb6-17"><a href="#cb6-17" aria-hidden="true" tabindex="-1"></a><span class="dt">type</span><span class="ot">=</span><span class="dv">1</span></span>
+<span id="cb6-18"><a href="#cb6-18" aria-hidden="true" tabindex="-1"></a><span class="dt">id</span><span class="ot">=</span><span class="st">analytics</span><span class="dv">-0</span></span>
+<span id="cb6-19"><a href="#cb6-19" aria-hidden="true" tabindex="-1"></a><span class="dt">source</span><span class="ot">=</span><span class="st">primary-detector</span></span>
+<span id="cb6-20"><a href="#cb6-20" aria-hidden="true" tabindex="-1"></a><span class="dt">version</span><span class="ot">=</span><span class="fl">1.0</span></span></code></pre></div>
+<hr />
+<h2 id="state-management">State Management</h2>
+<table>
+<thead>
+<tr class="header">
+<th>State</th>
+<th>Store</th>
+<th>Key Pattern</th>
+<th>TTL</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Track crop heap</td>
+<td>Redis Hash</td>
+<td><code>{pipeline_id}:{track_id}</code></td>
+<td>5 min after TRACK_LOST</td>
+</tr>
+<tr class="even">
+<td>ReID gallery embeddings</td>
+<td>FAISS + Redis</td>
+<td><code>gallery:{zone_id}:{person_id}</code></td>
+<td>24 h</td>
+</tr>
+<tr class="odd">
+<td>LP dedup</td>
+<td>Redis Set</td>
+<td><code>lp:{plate_str}:{stream_id}</code></td>
+<td>30 s</td>
+</tr>
+<tr class="even">
+<td>Track last-seen</td>
+<td>Redis Hash</td>
+<td><code>track:lastseen:{track_id}</code></td>
+<td>10 min</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="operational-notes">Operational Notes</h2>
+<p><strong>Probe budget</strong>: Target &lt; 1 ms per frame in the probe. The probe does zero I/O and zero encoding — only metadata copy, quality score computation (arithmetic), and queue push.</p>
+<p><strong>Queue sizing</strong>: Set <code>crop_queue maxsize</code> to ~2× your peak frame-rate × worker latency product. Drop oldest on full rather than blocking.</p>
+<p><strong>JPEG encode offload</strong>: <code>extract_and_encode_crop</code> (GPU→CPU + turbojpeg encode) typically takes 2–5 ms. Run in a thread pool (<code>asyncio.to_thread</code>) so it never touches the pipeline thread.</p>
+<p><strong>Crop size policy</strong>: Inline base64 for crops &lt; 10 KB (LP regions). Use S3/MinIO + key for person/vehicle crops to keep Kafka message sizes bounded.</p>
+<p><strong>Track ID stability</strong>: nvtracker resets IDs on pipeline restart. Always include <code>pipeline_instance_id</code> (UUID generated at startup) in every message so consumers can detect restarts and flush stale state.</p>
+<p><strong>Kafka producer config (librdkafka)</strong>:</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode ini"><code class="sourceCode ini"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="dt">queue.buffering.max.messages</span><span class="ot">=</span><span class="dv">100000</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="dt">queue.buffering.max.ms</span><span class="ot">=</span><span class="dv">5</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a><span class="dt">batch.num.messages</span><span class="ot">=</span><span class="dv">500</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a><span class="dt">compression.type</span><span class="ot">=</span><span class="st">lz4</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a><span class="dt">message.max.bytes</span><span class="ot">=</span><span class="dv">5242880</span><span class="st">   # </span><span class="dv">5</span><span class="st"> MB — covers base64 person crop</span></span></code></pre></div>
+<p><strong>Consumer scaling</strong>: - ReID Consumer: scale by camera zone, not by camera count (gallery is per-zone) - LP OCR Consumer: stateless, scale horizontally by partition count - Track Aggregator: one instance per <code>stream_id</code> partition to avoid cross-instance state - Analytics Consumer: stateless, scale freely</p>
+<hr />
+<h2 id="concept-frame-synchronized-tracking">Concept: Frame-Synchronized Tracking</h2>
+<p>Tracking is a <strong>recurrence relation</strong> — the output at frame N depends on state from frame N-1. It must live where frames are guaranteed to be consecutive and in order.</p>
+<p>Between frame N and frame N+1, the tracker:</p>
+<pre><code>Frame 1:  [bbox A at x=100]
+Frame 2:  [bbox A at x=110]  → &quot;moved 10px right, same object, track_id=1&quot;
+Frame 3:  [bbox A at x=120]  → &quot;moved 10px right again, velocity=10px/f&quot;
+Frame 4:  NO DETECTION       → Kalman predicts bbox at x=130, track still alive
+Frame 5:  [bbox A at x=138]  → close enough to prediction, re-associated</code></pre>
+<p>The tracker uses: - <strong>Kalman filter</strong> — predicts where an object will be next frame based on velocity - <strong>IoU / appearance matching</strong> — associates new detections to existing tracks - <strong>State machine</strong> — TENTATIVE → CONFIRMED → LOST based on consecutive hit/miss counts</p>
+<h3 id="why-it-cannot-be-done-downstream">Why it cannot be done downstream</h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Problem</th>
+<th>Detail</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Pixels are gone</td>
+<td>By the time the consumer sees the message, the GPU frame buffer has been freed</td>
+</tr>
+<tr class="even">
+<td>No ordering guarantee</td>
+<td>Kafka does not guarantee per-frame ordering under producer batching or partition rebalancing</td>
+</tr>
+<tr class="odd">
+<td>Latency compounds</td>
+<td>Tracker needs frame N to compute frame N+1’s prediction — buffering and waiting defeats real-time tracking</td>
+</tr>
+<tr class="even">
+<td>Association is atomic</td>
+<td>Hungarian algorithm matching across N detections and M tracks must happen per frame, not distributed</td>
+</tr>
+</tbody>
+</table>
+<p>In DeepStream, <code>nvstreammux</code> enforces that every plugin sees the complete batch for timestamp T before any plugin sees T+1. This guarantee is enforced by the GStreamer pipeline clock and does not exist downstream of Kafka.</p>
+<hr />
+<h2 id="concept-raw-pixel-access">Concept: Raw Pixel Access</h2>
+<p>Raw pixel access means reading the actual RGBA/NV12 pixel values of a frame directly from GPU memory while it is still live in the pipeline.</p>
+<p>When DeepStream decodes a frame it lands in an <code>NvBufSurface</code> in GPU memory. Every plugin — nvinfer, nvtracker, your probe — runs while that buffer is still allocated. Once the frame exits the pipeline the memory is freed. A Kafka message only carries numbers:</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode json"><code class="sourceCode json"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="fu">{</span> <span class="dt">&quot;bbox&quot;</span><span class="fu">:</span> <span class="ot">[</span><span class="dv">100</span><span class="ot">,</span> <span class="dv">200</span><span class="ot">,</span> <span class="dv">50</span><span class="ot">,</span> <span class="dv">80</span><span class="ot">]</span><span class="fu">,</span> <span class="dt">&quot;track_id&quot;</span><span class="fu">:</span> <span class="dv">42</span><span class="fu">,</span> <span class="dt">&quot;class&quot;</span><span class="fu">:</span> <span class="st">&quot;person&quot;</span> <span class="fu">}</span></span></code></pre></div>
+<p>The pixels are gone and cannot be reconstructed downstream.</p>
+<h3 id="why-deepstream-is-ideal">Why DeepStream is ideal</h3>
+<p>The entire decode → infer → track chain is zero-copy on GPU. Your probe fires while the frame has already been used for inference — pixel access costs nothing extra.</p>
+<pre><code>Camera → decode → GPU memory
+                     │
+              ┌──────┴────────┐
+              │  nvinfer      │  runs on GPU, no copy
+              │  nvtracker    │  runs on GPU, no copy
+              │  your probe   │  ← frame still in GPU memory here
+              └───────────────┘
+                     │
+              frame released, memory freed</code></pre>
+<h3 id="concrete-example-extracting-a-person-crop">Concrete example — extracting a person crop</h3>
+<div class="sourceCode" id="cb11"><pre class="sourceCode python"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> unified_probe(pad, info, u_data):</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>    gst_buffer <span class="op">=</span> info.get_buffer()</span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>    batch_meta <span class="op">=</span> pyds.gst_buffer_get_nvds_batch_meta(gst_buffer)</span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> frame_meta <span class="kw">in</span> nvds_frame_meta_list(batch_meta):</span>
+<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-7"><a href="#cb11-7" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Maps GPU frame buffer into a CPU-readable numpy array</span></span>
+<span id="cb11-8"><a href="#cb11-8" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Shape: (height, width, 4)  format: RGBA</span></span>
+<span id="cb11-9"><a href="#cb11-9" aria-hidden="true" tabindex="-1"></a>        <span class="co"># This is the actual frame — every pixel of the camera feed at this moment</span></span>
+<span id="cb11-10"><a href="#cb11-10" aria-hidden="true" tabindex="-1"></a>        frame_array <span class="op">=</span> pyds.get_nvds_buf_surface(<span class="bu">hash</span>(gst_buffer), frame_meta.batch_id)</span>
+<span id="cb11-11"><a href="#cb11-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-12"><a href="#cb11-12" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> obj_meta <span class="kw">in</span> nvds_obj_meta_list(frame_meta):</span>
+<span id="cb11-13"><a href="#cb11-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-14"><a href="#cb11-14" aria-hidden="true" tabindex="-1"></a>            l <span class="op">=</span> <span class="bu">int</span>(obj_meta.rect_params.left)</span>
+<span id="cb11-15"><a href="#cb11-15" aria-hidden="true" tabindex="-1"></a>            t <span class="op">=</span> <span class="bu">int</span>(obj_meta.rect_params.top)</span>
+<span id="cb11-16"><a href="#cb11-16" aria-hidden="true" tabindex="-1"></a>            w <span class="op">=</span> <span class="bu">int</span>(obj_meta.rect_params.width)</span>
+<span id="cb11-17"><a href="#cb11-17" aria-hidden="true" tabindex="-1"></a>            h <span class="op">=</span> <span class="bu">int</span>(obj_meta.rect_params.height)</span>
+<span id="cb11-18"><a href="#cb11-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-19"><a href="#cb11-19" aria-hidden="true" tabindex="-1"></a>            <span class="co"># Numpy slice into the live GPU-mapped buffer — no copy</span></span>
+<span id="cb11-20"><a href="#cb11-20" aria-hidden="true" tabindex="-1"></a>            person_pixels <span class="op">=</span> frame_array[t : t<span class="op">+</span>h, l : l<span class="op">+</span>w]</span>
+<span id="cb11-21"><a href="#cb11-21" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-22"><a href="#cb11-22" aria-hidden="true" tabindex="-1"></a>            <span class="co"># First and only copy — pixels → JPEG bytes → Kafka</span></span>
+<span id="cb11-23"><a href="#cb11-23" aria-hidden="true" tabindex="-1"></a>            _, jpeg <span class="op">=</span> cv2.imencode(<span class="st">&#39;.jpg&#39;</span>, person_pixels, [cv2.IMWRITE_JPEG_QUALITY, <span class="dv">85</span>])</span>
+<span id="cb11-24"><a href="#cb11-24" aria-hidden="true" tabindex="-1"></a>            crop_queue.put_nowait(CropTask(jpeg<span class="op">=</span>jpeg.tobytes(), track_id<span class="op">=</span>obj_meta.object_id))</span>
+<span id="cb11-25"><a href="#cb11-25" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-26"><a href="#cb11-26" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> Gst.PadProbeReturn.OK</span></code></pre></div>
+<h3 id="downstream-has-no-alternative">Downstream has no alternative</h3>
+<p>To get crops in a Kafka consumer without in-pipeline extraction you would need to send full frames (~500 KB JPEG at 30fps per camera = ~450 MB/s per camera). Extracting crops in the probe sends only the person region (5–20 KB).</p>
+<hr />
+<h2 id="concept-drawbacks-of-multiple-probes">Concept: Drawbacks of Multiple Probes</h2>
+<p>Every probe is a synchronous callback on the GStreamer streaming thread. The pipeline cannot advance to the next buffer until every probe returns.</p>
+<h3 id="every-probe-blocks-the-pipeline-thread">1 — Every probe blocks the pipeline thread</h3>
+<pre><code>Buffer arrives
+    ├── Probe 1 fires  (5ms)   ← pipeline stopped
+    ├── Probe 2 fires  (5ms)   ← pipeline stopped
+    └── Probe 3 fires  (5ms)   ← pipeline stopped
+                                  total stall: 15ms out of 33ms budget</code></pre>
+<h3 id="metadata-list-traversed-multiple-times">2 — Metadata list traversed multiple times</h3>
+<p>Each probe that iterates the batch pays the full linked-list traversal cost again. With 8 cameras × 20 objects = 160 objects per batch, three probes do 480 object iterations instead of 160.</p>
+<h3 id="shared-state-requires-locks">3 — Shared state requires locks</h3>
+<p>If probe 1 computes a quality score and probe 2 needs it, the data must be shared via a dict with a lock. Probes on different pads can fire from different threads — a real race condition without explicit synchronisation.</p>
+<h3 id="execution-order-is-implicit">4 — Execution order is implicit</h3>
+<p>GStreamer evaluates probes in the order <code>add_probe()</code> was called. If a crop probe is added before an annotation probe, crops are extracted without annotations — silent wrong behaviour with no error.</p>
+<h3 id="nvbufsurface-mapping-cost-multiplies">5 — NvBufSurface mapping cost multiplies</h3>
+<p>Each probe that calls <code>pyds.get_nvds_buf_surface()</code> pays an independent GPU→CPU map/unmap. Each map is a CPU–GPU synchronisation point. One probe maps once and extracts everything; multiple probes each pay this independently.</p>
+<table>
+<thead>
+<tr class="header">
+<th>Drawback</th>
+<th>Impact</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Pipeline stall</td>
+<td>Latency multiplies linearly with probe count</td>
+</tr>
+<tr class="even">
+<td>Metadata traversal</td>
+<td>CPU cost multiplies with probe count</td>
+</tr>
+<tr class="odd">
+<td>Shared state</td>
+<td>Race conditions on multi-pad pipelines</td>
+</tr>
+<tr class="even">
+<td>Implicit order</td>
+<td>Silent wrong behaviour when order matters</td>
+</tr>
+<tr class="odd">
+<td>Surface remap</td>
+<td>Unnecessary GPU↔︎CPU sync points</td>
+</tr>
+<tr class="even">
+<td>Harder to debug</td>
+<td>No clear owner when things go wrong</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Rule</strong>: one probe, one traversal, collect everything into local variables, dispatch to async workers.</p>
+<hr />
+<h2 id="concept-why-reid-belongs-downstream">Concept: Why ReID Belongs Downstream</h2>
+<p>ReID answers: “Is the person in camera B the same person I saw in camera A 2 minutes ago?” It works by extracting a 512-dim embedding from a crop and comparing it against a gallery of known embeddings.</p>
+<h3 id="it-is-not-frame-synchronous">It is not frame-synchronous</h3>
+<pre><code>Tracking needs:  frame 1 → frame 2 → frame 3   (ordered, no gaps)
+ReID needs:      crop @ frame 847 → compare against gallery
+                 (result is identical whether run 1ms or 1s later)</code></pre>
+<h3 id="the-crop-is-already-available-downstream">The crop is already available downstream</h3>
+<p>The probe extracts the JPEG crop and publishes it to <code>vss.objects.crops</code>. The ReID consumer has the actual pixels without touching the pipeline at all.</p>
+<h3 id="gallery-management-is-complex-stateful-logic">Gallery management is complex stateful logic</h3>
+<p>The gallery grows, persists, ages out, and spans cameras. It requires FAISS or Redis vector search, per-zone partitioning, and entry expiry. None of this belongs in a probe called 30 times per second.</p>
+<h3 id="gpu-contention-with-the-pipeline">GPU contention with the pipeline</h3>
+<pre><code>Pipeline GPU budget per frame at 30fps = 33ms
+Primary detector:   ~8ms
+nvtracker:          ~5ms
+Secondary detector: ~4ms
+─────────────────────────
+Remaining:          ~16ms
+
+ReID per crop (OSNet): ~6ms × 20 objects = 120ms  ← blows the budget</code></pre>
+<p>Downstream ReID runs on its own GPU or schedule without affecting pipeline FPS.</p>
+<h3 id="cross-camera-matching-requires-multi-stream-context">Cross-camera matching requires multi-stream context</h3>
+<p>A probe only has context for its own pipeline. Cross-camera matching requires seeing crops from all cameras simultaneously — which is only possible in a consumer subscribed to all streams on one topic.</p>
+<h3 id="the-one-exception">The one exception</h3>
+<p>nvtracker can use a ReID model internally (via <code>re-id-model-path</code> in config) to re-associate lost tracks within a single camera. This is frame-synchronous and belongs in the pipeline. It is separate from cross-camera or long-term person identification, which always belongs downstream.</p>
+<hr />
+<h2 id="concept-why-lp-ocr-belongs-downstream">Concept: Why LP OCR Belongs Downstream</h2>
+<p>The secondary nvinfer detects the LP bbox. The probe extracts the LP crop and sends it to <code>vss.lp.crops</code>. OCR is: <strong>pixels in → plate string out</strong> — it has no dependency on the live frame or consecutive frames.</p>
+<h3 id="it-is-not-frame-synchronous-1">It is not frame-synchronous</h3>
+<p>OCR on a crop produces the same plate string whether run 1ms or 1 second after the frame. Unlike tracking, there is no correctness dependency on timing.</p>
+<h3 id="you-should-not-ocr-every-frame">You should not OCR every frame</h3>
+<p>A car stopped for 10 seconds at 30fps = 300 LP crops. Running OCR on all 300 is wasteful. The correct approach:</p>
+<pre><code>300 crops for track_id=42
+    │
+    ├── Track Aggregator picks top-3 sharpest crops (by quality_score)
+    └── OCR Consumer runs on 3 crops → majority vote → confident result</code></pre>
+<p>This selection requires buffering per track and flushing on TRACK_LOST — stateful logic that cannot run in a per-frame probe.</p>
+<h3 id="ocr-engines-are-not-pipeline-native">OCR engines are not pipeline-native</h3>
+<table>
+<thead>
+<tr class="header">
+<th>Engine</th>
+<th>Runtime</th>
+<th>Per-crop latency</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>PaddleOCR</td>
+<td>Python / ONNX</td>
+<td>20–80ms</td>
+</tr>
+<tr class="even">
+<td>EasyOCR</td>
+<td>Python / PyTorch</td>
+<td>50–150ms</td>
+</tr>
+<tr class="odd">
+<td>Tesseract</td>
+<td>C++ / CPU</td>
+<td>30–100ms</td>
+</tr>
+<tr class="even">
+<td>TRT-OCR</td>
+<td>TensorRT</td>
+<td>5–15ms</td>
+</tr>
+</tbody>
+</table>
+<p>Even TRT-OCR at 15ms running on every LP detection in an 8-camera 30fps pipeline: <code>8 × 30 × 15ms = 3600ms/s</code> of OCR work against a 33ms/frame budget — pipeline completely stalled.</p>
+<h3 id="ocr-output-needs-post-processing">OCR output needs post-processing</h3>
+<div class="sourceCode" id="cb16"><pre class="sourceCode python"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>raw_output <span class="op">=</span> <span class="st">&quot;MH-O1-AB-I234&quot;</span>   <span class="co"># O/0 and I/1 confused</span></span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> normalize_plate(raw: <span class="bu">str</span>) <span class="op">-&gt;</span> <span class="bu">str</span>:</span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a>    cleaned <span class="op">=</span> raw.upper().replace(<span class="st">&quot; &quot;</span>, <span class="st">&quot;&quot;</span>).replace(<span class="st">&quot;-&quot;</span>, <span class="st">&quot;&quot;</span>)</span>
+<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> cleaned.replace(<span class="st">&quot;O&quot;</span>, <span class="st">&quot;0&quot;</span>).replace(<span class="st">&quot;I&quot;</span>, <span class="st">&quot;1&quot;</span>).replace(<span class="st">&quot;S&quot;</span>, <span class="st">&quot;5&quot;</span>)</span>
+<span id="cb16-6"><a href="#cb16-6" aria-hidden="true" tabindex="-1"></a><span class="co"># → &quot;MH01AB1234&quot;</span></span></code></pre></div>
+<p>Plus confidence thresholding, regional format validation, watchlist lookup, and dedup within a time window. This is business logic — it belongs in a dedicated consumer.</p>
+<h3 id="model-updates-without-pipeline-restart">Model updates without pipeline restart</h3>
+<p>Updating the OCR consumer is a rolling restart with zero pipeline interruption, no frame drops, and no track ID resets. Updating OCR inside the pipeline forces a full pipeline restart.</p>
+<hr />
+<h2 id="concept-frame-level-vs-track-level-storage">Concept: Frame-Level vs Track-Level Storage</h2>
+<h3 id="where-track-level-is-sufficient">Where Track-Level Is Sufficient</h3>
+<p>For identity and evidence-based use cases, <code>vss.tracks.summary</code> is all you need to persist:</p>
+<table>
+<thead>
+<tr class="header">
+<th>Use Case</th>
+<th>Track-Level Enough?</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Who was at the site</td>
+<td>Yes — <code>first_seen</code>, <code>last_seen</code>, <code>top_1_crop</code></td>
+</tr>
+<tr class="even">
+<td>Best photo of each person</td>
+<td>Yes — <code>top_1_crop</code></td>
+</tr>
+<tr class="odd">
+<td>Total dwell time</td>
+<td>Yes — <code>duration_ms</code></td>
+</tr>
+<tr class="even">
+<td>LP of a vehicle</td>
+<td>Yes — emitted on TRACK_LOST</td>
+</tr>
+<tr class="odd">
+<td>ReID / cross-camera match</td>
+<td>Yes — crops already present</td>
+</tr>
+</tbody>
+</table>
+<p>For these, <code>vss.detections</code> is a transient stream consumed in real-time and never stored.</p>
+<h3 id="where-frame-level-cannot-be-replaced">Where Frame-Level Cannot Be Replaced</h3>
+<p><strong>Zone crossing / tripwire alerts</strong></p>
+<pre><code>Person trajectory:
+  frame 100: bbox at x=300  (left of line)
+  frame 101: bbox at x=480  (left of line)
+  frame 102: bbox at x=520  ← crossed line at x=500
+  frame 103: bbox at x=600  (right of line)</code></pre>
+<p>Track summary only gives <code>first_seen</code> and <code>last_seen</code>. It cannot tell you <em>when</em> a person crossed a boundary or <em>which</em> zones they passed through. Every frame’s bbox is required to detect the crossing moment.</p>
+<p><strong>Zone-specific dwell time</strong></p>
+<pre><code>Track duration: 120 seconds   ← track summary knows this
+
+Zone A (entrance):   45 seconds  ┐
+Zone B (shelf):      60 seconds  ├── only frame-level positions reveal this
+Zone C (checkout):   15 seconds  ┘</code></pre>
+<p><strong>Trajectory and path analysis</strong> — heat maps, flow direction, and common paths all require aggregating bbox positions across frames, not just start and end points.</p>
+<p><strong>Speed estimation</strong> — <code>speed = delta_bbox / delta_time</code> needs at least two consecutive frame positions. Track summary has none.</p>
+<p><strong>Crowd density at a point in time</strong> — “How many people were in Zone B at 10:32:15?” Track summary only says the track existed between <code>first_seen</code> and <code>last_seen</code>, not where it was at a specific moment.</p>
+<h3 id="the-right-storage-split">The Right Storage Split</h3>
+<p><code>vss.detections</code> is a real-time stream for alert consumers — it is never written to a database. Only <code>vss.tracks.summary</code> hits long-term storage.</p>
+<pre><code>vss.detections  ──► Real-time consumers only        (NOT persisted)
+                    • tripwire / zone crossing
+                    • crowd density threshold
+                    • speed alerts
+
+vss.tracks.summary ──► Database                     (persisted)
+                        • identity store
+                        • dwell time
+                        • crops / evidence</code></pre>
+<p>If historical trajectory is needed, the alert consumer writes a downsampled path on TRACK_LOST — not the raw 30fps stream:</p>
+<div class="sourceCode" id="cb20"><pre class="sourceCode python"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Written to DB on TRACK_LOST — 1 sample per second, not per frame</span></span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;track_id&quot;</span>: <span class="dv">42</span>,</span>
+<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;trajectory&quot;</span>: [</span>
+<span id="cb20-5"><a href="#cb20-5" aria-hidden="true" tabindex="-1"></a>        {<span class="st">&quot;ts&quot;</span>: <span class="dv">1000</span>, <span class="st">&quot;x&quot;</span>: <span class="dv">300</span>, <span class="st">&quot;y&quot;</span>: <span class="dv">200</span>, <span class="st">&quot;zone&quot;</span>: <span class="st">&quot;A&quot;</span>},</span>
+<span id="cb20-6"><a href="#cb20-6" aria-hidden="true" tabindex="-1"></a>        {<span class="st">&quot;ts&quot;</span>: <span class="dv">2000</span>, <span class="st">&quot;x&quot;</span>: <span class="dv">450</span>, <span class="st">&quot;y&quot;</span>: <span class="dv">210</span>, <span class="st">&quot;zone&quot;</span>: <span class="st">&quot;B&quot;</span>},</span>
+<span id="cb20-7"><a href="#cb20-7" aria-hidden="true" tabindex="-1"></a>        {<span class="st">&quot;ts&quot;</span>: <span class="dv">3000</span>, <span class="st">&quot;x&quot;</span>: <span class="dv">600</span>, <span class="st">&quot;y&quot;</span>: <span class="dv">215</span>, <span class="st">&quot;zone&quot;</span>: <span class="st">&quot;C&quot;</span>},</span>
+<span id="cb20-8"><a href="#cb20-8" aria-hidden="true" tabindex="-1"></a>    ]</span>
+<span id="cb20-9"><a href="#cb20-9" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div>
+<p>This reduces storage by 30× (1 sample/s vs 30 samples/s) while preserving enough resolution for zone and path queries.</p>
+<hr />
+<h2 id="concept-threading-model-for-probe-async-workers">Concept: Threading Model for Probe → Async Workers</h2>
+<h3 id="the-core-problem">The Core Problem</h3>
+<p>GStreamer runs the probe on its <strong>streaming thread</strong> — a synchronous C-level callback. Python’s asyncio is a <strong>single-threaded event loop</strong>. These two worlds cannot talk directly and need an explicit bridge.</p>
+<pre><code>GStreamer Streaming Thread  (synchronous, C-level)
+        │
+        │  ← probe fires here, must return in &lt; 1ms
+        │
+        ?  ← how does sync talk to async?
+        │
+asyncio Event Loop Thread   (async, I/O-efficient)
+ThreadPoolExecutor Threads  (CPU-bound work: JPEG encode, GPU→CPU)</code></pre>
+<h3 id="the-three-thread-types">The Three Thread Types</h3>
+<pre><code>┌─────────────────────────────────────────────────────────────────┐
+│  Thread 1: GStreamer Streaming Thread                            │
+│  (GStreamer owns this — you never create it)                    │
+│  • probe fires here                                              │
+│  • must return in &lt; 1ms                                          │
+│  • only action: put_nowait() onto a thread-safe queue           │
+└─────────────────────────────────────────────────────────────────┘
+         │  queue.put_nowait()  (thread-safe, non-blocking)
+         ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  Thread 2: asyncio Event Loop Thread                             │
+│  (you create one: threading.Thread(target=loop.run_forever))    │
+│  • drains the queue via run_in_executor                          │
+│  • runs coroutines: kafka produce, s3 upload                     │
+│  • never does CPU-heavy work directly                            │
+└─────────────────────────────────────────────────────────────────┘
+         │  asyncio.to_thread() / run_in_executor()
+         ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  Thread Pool: ThreadPoolExecutor  (managed by asyncio)           │
+│  (asyncio creates and manages these — you set max_workers)      │
+│  • GPU→CPU surface copy                                          │
+│  • turbojpeg JPEG encode                                         │
+│  • releases GIL during C extensions → true parallelism          │
+└─────────────────────────────────────────────────────────────────┘</code></pre>
+<h3 id="the-bridge-thread-safe-queue-between-sync-and-async">The Bridge: thread-safe queue between sync and async</h3>
+<p><code>asyncio.Queue</code> is not thread-safe — you cannot call <code>put_nowait()</code> on it from the GStreamer thread. Use <code>queue.Queue</code> (stdlib, thread-safe) as the bridge.</p>
+<div class="sourceCode" id="cb23"><pre class="sourceCode python"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> asyncio</span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> threading</span>
+<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> queue  <span class="co"># stdlib — thread-safe</span></span>
+<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-5"><a href="#cb23-5" aria-hidden="true" tabindex="-1"></a><span class="co"># --- Setup (at startup) ---</span></span>
+<span id="cb23-6"><a href="#cb23-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-7"><a href="#cb23-7" aria-hidden="true" tabindex="-1"></a>crop_queue  <span class="op">=</span> queue.Queue(maxsize<span class="op">=</span><span class="dv">2000</span>)   <span class="co"># thread-safe bridge</span></span>
+<span id="cb23-8"><a href="#cb23-8" aria-hidden="true" tabindex="-1"></a>track_queue <span class="op">=</span> queue.Queue(maxsize<span class="op">=</span><span class="dv">500</span>)</span>
+<span id="cb23-9"><a href="#cb23-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-10"><a href="#cb23-10" aria-hidden="true" tabindex="-1"></a>loop <span class="op">=</span> asyncio.new_event_loop()</span>
+<span id="cb23-11"><a href="#cb23-11" aria-hidden="true" tabindex="-1"></a>loop_thread <span class="op">=</span> threading.Thread(target<span class="op">=</span>loop.run_forever, daemon<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb23-12"><a href="#cb23-12" aria-hidden="true" tabindex="-1"></a>loop_thread.start()</span>
+<span id="cb23-13"><a href="#cb23-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-14"><a href="#cb23-14" aria-hidden="true" tabindex="-1"></a><span class="co"># --- Probe (GStreamer streaming thread) ---</span></span>
+<span id="cb23-15"><a href="#cb23-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-16"><a href="#cb23-16" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> unified_probe(pad, info, u_data):</span>
+<span id="cb23-17"><a href="#cb23-17" aria-hidden="true" tabindex="-1"></a>    batch_meta <span class="op">=</span> pyds.gst_buffer_get_nvds_batch_meta(info.get_buffer())</span>
+<span id="cb23-18"><a href="#cb23-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-19"><a href="#cb23-19" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> frame_meta <span class="kw">in</span> nvds_frame_meta_list(batch_meta):</span>
+<span id="cb23-20"><a href="#cb23-20" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> obj_meta <span class="kw">in</span> nvds_obj_meta_list(frame_meta):</span>
+<span id="cb23-21"><a href="#cb23-21" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-22"><a href="#cb23-22" aria-hidden="true" tabindex="-1"></a>            <span class="cf">try</span>:</span>
+<span id="cb23-23"><a href="#cb23-23" aria-hidden="true" tabindex="-1"></a>                crop_queue.put_nowait(CropTask(       <span class="co"># thread-safe, non-blocking</span></span>
+<span id="cb23-24"><a href="#cb23-24" aria-hidden="true" tabindex="-1"></a>                    surface_ref     <span class="op">=</span> get_surface_ref(info, frame_meta),</span>
+<span id="cb23-25"><a href="#cb23-25" aria-hidden="true" tabindex="-1"></a>                    obj_meta_copy   <span class="op">=</span> copy_obj_meta(obj_meta),</span>
+<span id="cb23-26"><a href="#cb23-26" aria-hidden="true" tabindex="-1"></a>                    frame_meta_copy <span class="op">=</span> copy_frame_meta(frame_meta),</span>
+<span id="cb23-27"><a href="#cb23-27" aria-hidden="true" tabindex="-1"></a>                    quality_score   <span class="op">=</span> compute_quality(obj_meta),</span>
+<span id="cb23-28"><a href="#cb23-28" aria-hidden="true" tabindex="-1"></a>                ))</span>
+<span id="cb23-29"><a href="#cb23-29" aria-hidden="true" tabindex="-1"></a>            <span class="cf">except</span> queue.Full:</span>
+<span id="cb23-30"><a href="#cb23-30" aria-hidden="true" tabindex="-1"></a>                metrics.increment(<span class="st">&quot;crop_queue.dropped&quot;</span>)</span>
+<span id="cb23-31"><a href="#cb23-31" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-32"><a href="#cb23-32" aria-hidden="true" tabindex="-1"></a>            attach_event_msg_meta(batch_meta, frame_meta, obj_meta)</span>
+<span id="cb23-33"><a href="#cb23-33" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-34"><a href="#cb23-34" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> Gst.PadProbeReturn.OK</span>
+<span id="cb23-35"><a href="#cb23-35" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-36"><a href="#cb23-36" aria-hidden="true" tabindex="-1"></a><span class="co"># --- Async crop worker (asyncio event loop thread) ---</span></span>
+<span id="cb23-37"><a href="#cb23-37" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-38"><a href="#cb23-38" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> crop_worker():</span>
+<span id="cb23-39"><a href="#cb23-39" aria-hidden="true" tabindex="-1"></a>    executor <span class="op">=</span> ThreadPoolExecutor(max_workers<span class="op">=</span><span class="dv">4</span>)</span>
+<span id="cb23-40"><a href="#cb23-40" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-41"><a href="#cb23-41" aria-hidden="true" tabindex="-1"></a>    <span class="cf">while</span> <span class="va">True</span>:</span>
+<span id="cb23-42"><a href="#cb23-42" aria-hidden="true" tabindex="-1"></a>        <span class="co"># run_in_executor bridges blocking queue.get into async world</span></span>
+<span id="cb23-43"><a href="#cb23-43" aria-hidden="true" tabindex="-1"></a>        task: CropTask <span class="op">=</span> <span class="cf">await</span> loop.run_in_executor(<span class="va">None</span>, crop_queue.get)</span>
+<span id="cb23-44"><a href="#cb23-44" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-45"><a href="#cb23-45" aria-hidden="true" tabindex="-1"></a>        <span class="co"># CPU-bound: GPU→CPU copy + JPEG encode → runs in thread pool</span></span>
+<span id="cb23-46"><a href="#cb23-46" aria-hidden="true" tabindex="-1"></a>        <span class="co"># GIL released by CUDA and turbojpeg C extensions → true parallelism</span></span>
+<span id="cb23-47"><a href="#cb23-47" aria-hidden="true" tabindex="-1"></a>        jpeg_bytes <span class="op">=</span> <span class="cf">await</span> loop.run_in_executor(executor, extract_and_encode, task)</span>
+<span id="cb23-48"><a href="#cb23-48" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-49"><a href="#cb23-49" aria-hidden="true" tabindex="-1"></a>        <span class="co"># I/O-bound: Kafka + S3 → async, no extra thread needed</span></span>
+<span id="cb23-50"><a href="#cb23-50" aria-hidden="true" tabindex="-1"></a>        s3_key <span class="op">=</span> <span class="va">None</span></span>
+<span id="cb23-51"><a href="#cb23-51" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> <span class="bu">len</span>(jpeg_bytes) <span class="op">&gt;</span> INLINE_THRESHOLD:</span>
+<span id="cb23-52"><a href="#cb23-52" aria-hidden="true" tabindex="-1"></a>            s3_key <span class="op">=</span> <span class="cf">await</span> s3_client.put_object(...)</span>
+<span id="cb23-53"><a href="#cb23-53" aria-hidden="true" tabindex="-1"></a>            jpeg_bytes <span class="op">=</span> <span class="va">None</span></span>
+<span id="cb23-54"><a href="#cb23-54" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-55"><a href="#cb23-55" aria-hidden="true" tabindex="-1"></a>        topic <span class="op">=</span> <span class="st">&quot;vss.lp.crops&quot;</span> <span class="cf">if</span> task.obj_meta_copy.class_id <span class="op">==</span> LP_CLASS <span class="op">\</span></span>
+<span id="cb23-56"><a href="#cb23-56" aria-hidden="true" tabindex="-1"></a>                <span class="cf">else</span> <span class="st">&quot;vss.objects.crops&quot;</span></span>
+<span id="cb23-57"><a href="#cb23-57" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-58"><a href="#cb23-58" aria-hidden="true" tabindex="-1"></a>        <span class="cf">await</span> kafka_producer.send(topic, value<span class="op">=</span>{</span>
+<span id="cb23-59"><a href="#cb23-59" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;track_id&quot;</span>     : task.obj_meta_copy.object_id,</span>
+<span id="cb23-60"><a href="#cb23-60" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;quality_score&quot;</span>: task.quality_score,</span>
+<span id="cb23-61"><a href="#cb23-61" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;crop_jpeg&quot;</span>    : b64encode(jpeg_bytes) <span class="cf">if</span> jpeg_bytes <span class="cf">else</span> <span class="va">None</span>,</span>
+<span id="cb23-62"><a href="#cb23-62" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;s3_key&quot;</span>       : s3_key,</span>
+<span id="cb23-63"><a href="#cb23-63" aria-hidden="true" tabindex="-1"></a>        })</span>
+<span id="cb23-64"><a href="#cb23-64" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-65"><a href="#cb23-65" aria-hidden="true" tabindex="-1"></a><span class="co"># --- Track event worker (plain thread, NOT asyncio) ---</span></span>
+<span id="cb23-66"><a href="#cb23-66" aria-hidden="true" tabindex="-1"></a><span class="co"># Single thread, stateful, sequential — asyncio adds no value here</span></span>
+<span id="cb23-67"><a href="#cb23-67" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-68"><a href="#cb23-68" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> track_event_worker():</span>
+<span id="cb23-69"><a href="#cb23-69" aria-hidden="true" tabindex="-1"></a>    track_state: <span class="bu">dict</span>[<span class="bu">int</span>, TrackState] <span class="op">=</span> {}</span>
+<span id="cb23-70"><a href="#cb23-70" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-71"><a href="#cb23-71" aria-hidden="true" tabindex="-1"></a>    <span class="cf">while</span> <span class="va">True</span>:</span>
+<span id="cb23-72"><a href="#cb23-72" aria-hidden="true" tabindex="-1"></a>        event: TrackEvent <span class="op">=</span> track_queue.get()   <span class="co"># blocking get, intentionally sequential</span></span>
+<span id="cb23-73"><a href="#cb23-73" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-74"><a href="#cb23-74" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> event.<span class="bu">type</span> <span class="op">==</span> <span class="st">&quot;NEW&quot;</span>:</span>
+<span id="cb23-75"><a href="#cb23-75" aria-hidden="true" tabindex="-1"></a>            track_state[event.track_id] <span class="op">=</span> TrackState(first_seen<span class="op">=</span>event.ts)</span>
+<span id="cb23-76"><a href="#cb23-76" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-77"><a href="#cb23-77" aria-hidden="true" tabindex="-1"></a>        <span class="cf">elif</span> event.<span class="bu">type</span> <span class="op">==</span> <span class="st">&quot;LOST&quot;</span>:</span>
+<span id="cb23-78"><a href="#cb23-78" aria-hidden="true" tabindex="-1"></a>            state <span class="op">=</span> track_state.pop(event.track_id, <span class="va">None</span>)</span>
+<span id="cb23-79"><a href="#cb23-79" aria-hidden="true" tabindex="-1"></a>            <span class="cf">if</span> state:</span>
+<span id="cb23-80"><a href="#cb23-80" aria-hidden="true" tabindex="-1"></a>                kafka_sync_producer.send(<span class="st">&quot;vss.tracks.events&quot;</span>, {...})</span>
+<span id="cb23-81"><a href="#cb23-81" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-82"><a href="#cb23-82" aria-hidden="true" tabindex="-1"></a><span class="co"># --- Start workers ---</span></span>
+<span id="cb23-83"><a href="#cb23-83" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-84"><a href="#cb23-84" aria-hidden="true" tabindex="-1"></a>asyncio.run_coroutine_threadsafe(crop_worker(), loop)</span>
+<span id="cb23-85"><a href="#cb23-85" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-86"><a href="#cb23-86" aria-hidden="true" tabindex="-1"></a>track_thread <span class="op">=</span> threading.Thread(target<span class="op">=</span>track_event_worker, daemon<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb23-87"><a href="#cb23-87" aria-hidden="true" tabindex="-1"></a>track_thread.start()</span></code></pre></div>
+<h3 id="why-each-worker-has-a-different-design">Why Each Worker Has a Different Design</h3>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Worker</th>
+<th>Thread model</th>
+<th>Reason</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Crop worker</td>
+<td>asyncio event loop + ThreadPoolExecutor</td>
+<td>I/O (Kafka, S3) benefits from async; CPU (JPEG encode) needs thread pool; GIL released by C extensions</td>
+</tr>
+<tr class="even">
+<td>Track event worker</td>
+<td>Plain thread, blocking queue</td>
+<td>Stateful, sequential by design; async buys nothing when you intentionally process one event at a time</td>
+</tr>
+</tbody>
+</table>
+<h3 id="why-the-gil-is-not-a-problem-here">Why the GIL Is Not a Problem Here</h3>
+<p>The two CPU-heavy operations both release the GIL:</p>
+<pre><code>GPU→CPU copy  → CUDA C extension  → GIL released → true parallel across threads
+JPEG encode   → turbojpeg C lib   → GIL released → true parallel across threads</code></pre>
+<p><code>ThreadPoolExecutor(max_workers=4)</code> with 4 cameras genuinely runs 4 encodes in parallel. The GIL only blocks pure Python — which is minimal here.</p>
+<h3 id="full-thread-map">Full Thread Map</h3>
+<pre><code>Process
+  │
+  ├── GStreamer Streaming Thread(s)    [GStreamer owns]
+  │     └── probe: put_nowait() only
+  │
+  ├── asyncio Event Loop Thread        [you create 1]
+  │     └── crop_worker coroutine
+  │           ├── run_in_executor → ThreadPoolExecutor
+  │           │     ├── Thread (JPEG encode + GPU→CPU)
+  │           │     ├── Thread (JPEG encode + GPU→CPU)
+  │           │     └── Thread (JPEG encode + GPU→CPU)
+  │           ├── await kafka_producer.send()   (no thread)
+  │           └── await s3_client.put_object()  (no thread)
+  │
+  └── Track Event Thread               [you create 1]
+        └── blocking queue.get() loop</code></pre>
+<p>One asyncio thread. One track thread. One thread pool. The probe never blocks.</p>
+<hr />
+<h2 id="concept-why-jpeg-encoding-runs-in-a-thread-pool">Concept: Why JPEG Encoding Runs in a Thread Pool</h2>
+<h3 id="what-jpeg-encoding-actually-does">What JPEG Encoding Actually Does</h3>
+<p>JPEG is a pipeline of five sequential steps:</p>
+<pre><code>Raw pixels (RGB)
+    │
+    ▼
+1. Color space conversion    RGB → YCbCr
+    │
+    ▼
+2. Chroma downsampling       discard half the color resolution (human eyes don&#39;t notice)
+    │
+    ▼
+3. Block splitting           cut image into 8×8 pixel blocks
+    │
+    ▼
+4. DCT per block             Discrete Cosine Transform — math transform on each 8×8 block
+    │
+    ▼
+5. Huffman encoding          variable-length entropy coding — inherently sequential
+    │
+    ▼
+JPEG bytes</code></pre>
+<p>Steps 1–4 are parallelisable. Step 5 is not — and step 5 is the bottleneck.</p>
+<h3 id="why-huffman-encoding-is-sequential">Why Huffman Encoding Is Sequential</h3>
+<p>Huffman coding builds a variable-length bit stream where each output bit’s position depends on all the bits before it:</p>
+<pre><code>Block 1 output: 10 bits
+Block 2 output: starts at bit 11  ← must know block 1 finished at bit 10
+Block 3 output: starts at bit 23  ← must know block 2 finished at bit 22</code></pre>
+<p>You cannot start encoding block 3 until block 2 is done. This is a true sequential dependency — it cannot be parallelised. This is why JPEG encoding is CPU-bound, not GPU-bound.</p>
+<h3 id="why-gpu-is-not-ideal-for-small-crops">Why GPU Is Not Ideal for Small Crops</h3>
+<p>Your crops are small — a person bounding box is typically 80×200 px = 200 eight-by-eight blocks. For that size, GPU overhead dominates:</p>
+<pre><code>GPU path (nvjpeg):
+  CPU → GPU transfer of crop:       0.5 ms   ← crop is already on CPU after surface map
+  GPU kernel launch overhead:       0.2 ms
+  GPU DCT + quantise (200 blocks):  0.1 ms
+  GPU Huffman (still sequential):   0.3 ms
+  GPU → CPU transfer of JPEG:       0.3 ms
+  Total:                            1.4 ms
+
+CPU path (turbojpeg with SIMD):
+  DCT + quantise:                   0.1 ms
+  Huffman:                          0.2 ms
+  Total:                            0.3 ms</code></pre>
+<p>GPU is slower for small crops because transfer overhead dominates. nvjpeg becomes worthwhile for full frames (1920×1080 = 32,400 blocks) or batch-encoding hundreds of crops simultaneously.</p>
+<h3 id="why-turbojpeg-is-fast-on-cpu">Why turbojpeg Is Fast on CPU</h3>
+<p>turbojpeg wraps libjpeg-turbo which uses SIMD instructions — SSE2, AVX2 on x86, NEON on ARM. These process multiple 8×8 blocks simultaneously within a single CPU core:</p>
+<pre><code>AVX2: 256-bit registers
+  → 4 × float64 DCT values in one instruction
+  → effectively 4× throughput on DCT vs scalar code</code></pre>
+<h3 id="why-it-belongs-in-the-thread-pool-not-the-event-loop">Why It Belongs in the Thread Pool, Not the Event Loop</h3>
+<p>JPEG encoding is pure CPU computation — there is no I/O to await. If it ran directly in the asyncio event loop coroutine, it would block the event loop thread for ~0.3 ms per crop, preventing all other coroutines (Kafka produce, S3 upload) from running during that time.</p>
+<pre><code># WRONG — blocks the event loop
+async def crop_worker():
+    task = await queue.get()
+    jpeg = turbojpeg.encode(pixels)   # 0.3ms of CPU — event loop frozen here
+    await kafka_producer.send(...)    # nothing else can run until encode finishes
+
+# CORRECT — offloads CPU work to thread pool, event loop stays free
+async def crop_worker():
+    task = await queue.get()
+    jpeg = await loop.run_in_executor(executor, turbojpeg.encode, pixels)
+    #      ↑ event loop suspends this coroutine, runs others while thread encodes
+    await kafka_producer.send(...)</code></pre>
+<p><code>run_in_executor</code> runs <code>turbojpeg.encode</code> in a ThreadPoolExecutor thread. turbojpeg is a C extension and releases the GIL during encoding — giving true CPU parallelism across multiple crops simultaneously.</p>
+<h3 id="the-full-pixel-journey">The Full Pixel Journey</h3>
+<pre><code>NvBufSurface (GPU memory)
+    │
+    │  pyds.get_nvds_buf_surface()
+    │  CUDA maps GPU buffer into CPU-accessible pinned memory
+    ▼
+numpy array [H, W, 4]             ← pointing into mapped GPU memory
+    │
+    │  numpy slice [t:t+h, l:l+w]
+    │  crop region — no copy yet, still mapped GPU memory
+    ▼
+turbojpeg.encode(crop)            ← runs in ThreadPoolExecutor
+    │  reads from mapped memory (implicit CPU copy)
+    │  DCT + quantise (SIMD, GIL released)
+    │  Huffman encode (sequential, GIL released)
+    ▼
+JPEG bytes (Python bytes object)  ← pure CPU memory, ready for Kafka</code></pre>
+<h3 id="when-to-use-gpu-encoding-instead">When to Use GPU Encoding Instead</h3>
+<table>
+<thead>
+<tr class="header">
+<th>Scenario</th>
+<th>Use</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Small per-object crops (your case)</td>
+<td>turbojpeg on CPU in thread pool</td>
+</tr>
+<tr class="even">
+<td>Full frame snapshots</td>
+<td>nvjpeg</td>
+</tr>
+<tr class="odd">
+<td>Batching 100+ crops simultaneously</td>
+<td>nvjpeg batch API</td>
+</tr>
+<tr class="even">
+<td>Streaming video output</td>
+<td>nvenc (hardware encoder, not JPEG)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="implementation-details">Implementation Details</h2>
+<h3 id="surface-reference-lifecycle">1. Surface Reference Lifecycle</h3>
+<p><code>pyds.get_nvds_buf_surface()</code> maps GPU memory that is only valid while the probe is executing. Once the probe returns, GStreamer recycles that buffer. Accessing a surface reference after the probe returns produces corrupted pixels or a segfault.</p>
+<p><strong>Rule: copy crop pixels inside the probe. Push raw pixels to the queue. JPEG encode in the worker.</strong></p>
+<div class="sourceCode" id="cb32"><pre class="sourceCode python"><code class="sourceCode python"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a><span class="co"># IN the probe (GStreamer thread)</span></span>
+<span id="cb32-2"><a href="#cb32-2" aria-hidden="true" tabindex="-1"></a>frame_array <span class="op">=</span> pyds.get_nvds_buf_surface(<span class="bu">hash</span>(gst_buffer), frame_meta.batch_id)</span>
+<span id="cb32-3"><a href="#cb32-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb32-4"><a href="#cb32-4" aria-hidden="true" tabindex="-1"></a>l, t <span class="op">=</span> <span class="bu">int</span>(obj_meta.rect_params.left), <span class="bu">int</span>(obj_meta.rect_params.top)</span>
+<span id="cb32-5"><a href="#cb32-5" aria-hidden="true" tabindex="-1"></a>w, h <span class="op">=</span> <span class="bu">int</span>(obj_meta.rect_params.width), <span class="bu">int</span>(obj_meta.rect_params.height)</span>
+<span id="cb32-6"><a href="#cb32-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb32-7"><a href="#cb32-7" aria-hidden="true" tabindex="-1"></a><span class="co"># .copy() is mandatory — detaches from mapped GPU memory</span></span>
+<span id="cb32-8"><a href="#cb32-8" aria-hidden="true" tabindex="-1"></a>crop_pixels <span class="op">=</span> frame_array[t:t<span class="op">+</span>h, l:l<span class="op">+</span>w].copy()</span>
+<span id="cb32-9"><a href="#cb32-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb32-10"><a href="#cb32-10" aria-hidden="true" tabindex="-1"></a>crop_queue.put_nowait(CropTask(pixels<span class="op">=</span>crop_pixels, ...))</span>
+<span id="cb32-11"><a href="#cb32-11" aria-hidden="true" tabindex="-1"></a><span class="co"># probe returns — surface safely recycled by GStreamer</span></span>
+<span id="cb32-12"><a href="#cb32-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb32-13"><a href="#cb32-13" aria-hidden="true" tabindex="-1"></a><span class="co"># IN the worker thread (safe — plain numpy array in CPU memory)</span></span>
+<span id="cb32-14"><a href="#cb32-14" aria-hidden="true" tabindex="-1"></a>jpeg <span class="op">=</span> turbojpeg.encode(task.pixels)</span></code></pre></div>
+<p>The <code>.copy()</code> is a small numpy memcpy of just the crop region, not the full frame. At 80×200 RGBA = 64 KB — fast enough to do inside the probe.</p>
+<hr />
+<h3 id="track_new-track_lost-detection">2. TRACK_NEW / TRACK_LOST Detection</h3>
+<p>Maintain a per-source set of active track IDs and diff on every frame. Add a grace period to avoid false LOST events from temporary occlusion — nvtracker can drop a track for 1–2 frames and re-emit it with the same <code>track_id</code>.</p>
+<div class="sourceCode" id="cb33"><pre class="sourceCode python"><code class="sourceCode python"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a>active_tracks     : <span class="bu">dict</span>[<span class="bu">int</span>, <span class="bu">set</span>[<span class="bu">int</span>]] <span class="op">=</span> defaultdict(<span class="bu">set</span>)   <span class="co"># source_id → track_ids</span></span>
+<span id="cb33-2"><a href="#cb33-2" aria-hidden="true" tabindex="-1"></a>track_absent_count: <span class="bu">dict</span>[<span class="bu">int</span>, <span class="bu">int</span>]      <span class="op">=</span> defaultdict(<span class="bu">int</span>)   <span class="co"># track_id  → absent frames</span></span>
+<span id="cb33-3"><a href="#cb33-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb33-4"><a href="#cb33-4" aria-hidden="true" tabindex="-1"></a>LOST_GRACE_FRAMES <span class="op">=</span> <span class="dv">5</span>   <span class="co"># track must be absent for 5 consecutive frames before LOST</span></span>
+<span id="cb33-5"><a href="#cb33-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb33-6"><a href="#cb33-6" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> detect_track_events(frame_meta) <span class="op">-&gt;</span> <span class="bu">tuple</span>[<span class="bu">set</span>, <span class="bu">set</span>]:</span>
+<span id="cb33-7"><a href="#cb33-7" aria-hidden="true" tabindex="-1"></a>    source_id <span class="op">=</span> frame_meta.source_id</span>
+<span id="cb33-8"><a href="#cb33-8" aria-hidden="true" tabindex="-1"></a>    current   <span class="op">=</span> {o.object_id <span class="cf">for</span> o <span class="kw">in</span> nvds_obj_meta_list(frame_meta)}</span>
+<span id="cb33-9"><a href="#cb33-9" aria-hidden="true" tabindex="-1"></a>    previous  <span class="op">=</span> active_tracks[source_id]</span>
+<span id="cb33-10"><a href="#cb33-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb33-11"><a href="#cb33-11" aria-hidden="true" tabindex="-1"></a>    new_tracks <span class="op">=</span> current <span class="op">-</span> previous</span>
+<span id="cb33-12"><a href="#cb33-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb33-13"><a href="#cb33-13" aria-hidden="true" tabindex="-1"></a>    confirmed_lost <span class="op">=</span> <span class="bu">set</span>()</span>
+<span id="cb33-14"><a href="#cb33-14" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> tid <span class="kw">in</span> (previous <span class="op">-</span> current):</span>
+<span id="cb33-15"><a href="#cb33-15" aria-hidden="true" tabindex="-1"></a>        track_absent_count[tid] <span class="op">+=</span> <span class="dv">1</span></span>
+<span id="cb33-16"><a href="#cb33-16" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> track_absent_count[tid] <span class="op">&gt;=</span> LOST_GRACE_FRAMES:</span>
+<span id="cb33-17"><a href="#cb33-17" aria-hidden="true" tabindex="-1"></a>            confirmed_lost.add(tid)</span>
+<span id="cb33-18"><a href="#cb33-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb33-19"><a href="#cb33-19" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> tid <span class="kw">in</span> current:</span>
+<span id="cb33-20"><a href="#cb33-20" aria-hidden="true" tabindex="-1"></a>        track_absent_count.pop(tid, <span class="va">None</span>)   <span class="co"># reset if track reappears</span></span>
+<span id="cb33-21"><a href="#cb33-21" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb33-22"><a href="#cb33-22" aria-hidden="true" tabindex="-1"></a>    active_tracks[source_id] <span class="op">=</span> current</span>
+<span id="cb33-23"><a href="#cb33-23" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> new_tracks, confirmed_lost</span></code></pre></div>
+<hr />
+<h3 id="model-files-and-trt-engine-conversion">3. Model Files and TRT Engine Conversion</h3>
+<p>TRT engine files must be built on the same GPU they will run on. This blocks the pipeline skeleton and must be done before Sprint Day 2.</p>
+<div class="sourceCode" id="cb34"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Convert ONNX → TRT engine (run on target GPU)</span></span>
+<span id="cb34-2"><a href="#cb34-2" aria-hidden="true" tabindex="-1"></a><span class="ex">trtexec</span> <span class="at">--onnx</span><span class="op">=</span>yolov8n.onnx <span class="dt">\</span></span>
+<span id="cb34-3"><a href="#cb34-3" aria-hidden="true" tabindex="-1"></a>        <span class="at">--saveEngine</span><span class="op">=</span>yolov8n.engine <span class="dt">\</span></span>
+<span id="cb34-4"><a href="#cb34-4" aria-hidden="true" tabindex="-1"></a>        <span class="at">--fp16</span> <span class="dt">\</span></span>
+<span id="cb34-5"><a href="#cb34-5" aria-hidden="true" tabindex="-1"></a>        <span class="at">--workspace</span><span class="op">=</span>4096</span>
+<span id="cb34-6"><a href="#cb34-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb34-7"><a href="#cb34-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Verify engine loads correctly</span></span>
+<span id="cb34-8"><a href="#cb34-8" aria-hidden="true" tabindex="-1"></a><span class="ex">trtexec</span> <span class="at">--loadEngine</span><span class="op">=</span>yolov8n.engine <span class="at">--batch</span><span class="op">=</span>1</span></code></pre></div>
+<p>Required engine files before sprint start:</p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>File</th>
+<th>Used by</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>primary_detector.engine</code></td>
+<td>nvinfer (primary)</td>
+<td>person / vehicle / face classes</td>
+</tr>
+<tr class="even">
+<td><code>lp_detector.engine</code></td>
+<td>nvinfer (secondary)</td>
+<td>LP bbox only</td>
+</tr>
+<tr class="odd">
+<td><code>tracker_reid.engine</code></td>
+<td>nvtracker (optional)</td>
+<td>NvDCF appearance model for re-association</td>
+</tr>
+</tbody>
+</table>
+<p>Each engine is GPU-arch-specific (Ampere engine will not load on Turing). Build on the deployment GPU.</p>
+<hr />
+<h3 id="obj_meta-copy-strategy">4. obj_meta Copy Strategy</h3>
+<p><code>obj_meta</code> is a pyds wrapper around a C pointer that becomes invalid after the probe returns. Do not hold a reference to the raw <code>obj_meta</code> object. Copy only the scalar fields you need into a plain Python dataclass.</p>
+<div class="sourceCode" id="cb35"><pre class="sourceCode python"><code class="sourceCode python"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> dataclasses <span class="im">import</span> dataclass</span>
+<span id="cb35-2"><a href="#cb35-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb35-3"><a href="#cb35-3" aria-hidden="true" tabindex="-1"></a><span class="at">@dataclass</span></span>
+<span id="cb35-4"><a href="#cb35-4" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> ObjMetaCopy:</span>
+<span id="cb35-5"><a href="#cb35-5" aria-hidden="true" tabindex="-1"></a>    object_id : <span class="bu">int</span></span>
+<span id="cb35-6"><a href="#cb35-6" aria-hidden="true" tabindex="-1"></a>    class_id  : <span class="bu">int</span></span>
+<span id="cb35-7"><a href="#cb35-7" aria-hidden="true" tabindex="-1"></a>    confidence: <span class="bu">float</span></span>
+<span id="cb35-8"><a href="#cb35-8" aria-hidden="true" tabindex="-1"></a>    left      : <span class="bu">float</span></span>
+<span id="cb35-9"><a href="#cb35-9" aria-hidden="true" tabindex="-1"></a>    top       : <span class="bu">float</span></span>
+<span id="cb35-10"><a href="#cb35-10" aria-hidden="true" tabindex="-1"></a>    width     : <span class="bu">float</span></span>
+<span id="cb35-11"><a href="#cb35-11" aria-hidden="true" tabindex="-1"></a>    height    : <span class="bu">float</span></span>
+<span id="cb35-12"><a href="#cb35-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb35-13"><a href="#cb35-13" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> copy_obj_meta(obj_meta) <span class="op">-&gt;</span> ObjMetaCopy:</span>
+<span id="cb35-14"><a href="#cb35-14" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> ObjMetaCopy(</span>
+<span id="cb35-15"><a href="#cb35-15" aria-hidden="true" tabindex="-1"></a>        object_id  <span class="op">=</span> obj_meta.object_id,</span>
+<span id="cb35-16"><a href="#cb35-16" aria-hidden="true" tabindex="-1"></a>        class_id   <span class="op">=</span> obj_meta.class_id,</span>
+<span id="cb35-17"><a href="#cb35-17" aria-hidden="true" tabindex="-1"></a>        confidence <span class="op">=</span> obj_meta.confidence,</span>
+<span id="cb35-18"><a href="#cb35-18" aria-hidden="true" tabindex="-1"></a>        left       <span class="op">=</span> obj_meta.rect_params.left,</span>
+<span id="cb35-19"><a href="#cb35-19" aria-hidden="true" tabindex="-1"></a>        top        <span class="op">=</span> obj_meta.rect_params.top,</span>
+<span id="cb35-20"><a href="#cb35-20" aria-hidden="true" tabindex="-1"></a>        width      <span class="op">=</span> obj_meta.rect_params.width,</span>
+<span id="cb35-21"><a href="#cb35-21" aria-hidden="true" tabindex="-1"></a>        height     <span class="op">=</span> obj_meta.rect_params.height,</span>
+<span id="cb35-22"><a href="#cb35-22" aria-hidden="true" tabindex="-1"></a>    )</span></code></pre></div>
+<p>Do not copy the full <code>obj_meta</code> struct — it contains C pointers that are invalid outside the probe.</p>
+<hr />
+<h3 id="graceful-shutdown">5. Graceful Shutdown</h3>
+<p>Without explicit shutdown handling, tracks that are active when the process receives SIGTERM never produce a <code>vss.tracks.summary</code> message. Their crops are orphaned in Redis.</p>
+<div class="sourceCode" id="cb36"><pre class="sourceCode python"><code class="sourceCode python"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> signal</span>
+<span id="cb36-2"><a href="#cb36-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb36-3"><a href="#cb36-3" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> shutdown(loop):</span>
+<span id="cb36-4"><a href="#cb36-4" aria-hidden="true" tabindex="-1"></a>    <span class="co"># 1. Stop the pipeline from producing new frames</span></span>
+<span id="cb36-5"><a href="#cb36-5" aria-hidden="true" tabindex="-1"></a>    pipeline.set_state(Gst.State.PAUSED)</span>
+<span id="cb36-6"><a href="#cb36-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb36-7"><a href="#cb36-7" aria-hidden="true" tabindex="-1"></a>    <span class="co"># 2. Drain the crop queue — wait for all enqueued crops to be encoded and sent</span></span>
+<span id="cb36-8"><a href="#cb36-8" aria-hidden="true" tabindex="-1"></a>    <span class="cf">await</span> asyncio.wait_for(</span>
+<span id="cb36-9"><a href="#cb36-9" aria-hidden="true" tabindex="-1"></a>        asyncio.get_event_loop().run_in_executor(<span class="va">None</span>, crop_queue.join),</span>
+<span id="cb36-10"><a href="#cb36-10" aria-hidden="true" tabindex="-1"></a>        timeout<span class="op">=</span><span class="fl">10.0</span></span>
+<span id="cb36-11"><a href="#cb36-11" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb36-12"><a href="#cb36-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb36-13"><a href="#cb36-13" aria-hidden="true" tabindex="-1"></a>    <span class="co"># 3. Emit TRACK_LOST for all still-active tracks</span></span>
+<span id="cb36-14"><a href="#cb36-14" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> source_id, track_ids <span class="kw">in</span> active_tracks.items():</span>
+<span id="cb36-15"><a href="#cb36-15" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> tid <span class="kw">in</span> track_ids:</span>
+<span id="cb36-16"><a href="#cb36-16" aria-hidden="true" tabindex="-1"></a>            track_queue.put_nowait(TrackEvent(</span>
+<span id="cb36-17"><a href="#cb36-17" aria-hidden="true" tabindex="-1"></a>                track_id   <span class="op">=</span> tid,</span>
+<span id="cb36-18"><a href="#cb36-18" aria-hidden="true" tabindex="-1"></a>                event_type <span class="op">=</span> <span class="st">&quot;LOST&quot;</span>,</span>
+<span id="cb36-19"><a href="#cb36-19" aria-hidden="true" tabindex="-1"></a>                source_id  <span class="op">=</span> source_id,</span>
+<span id="cb36-20"><a href="#cb36-20" aria-hidden="true" tabindex="-1"></a>                ts         <span class="op">=</span> current_timestamp(),</span>
+<span id="cb36-21"><a href="#cb36-21" aria-hidden="true" tabindex="-1"></a>            ))</span>
+<span id="cb36-22"><a href="#cb36-22" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb36-23"><a href="#cb36-23" aria-hidden="true" tabindex="-1"></a>    <span class="co"># 4. Drain track event queue</span></span>
+<span id="cb36-24"><a href="#cb36-24" aria-hidden="true" tabindex="-1"></a>    <span class="cf">await</span> asyncio.wait_for(</span>
+<span id="cb36-25"><a href="#cb36-25" aria-hidden="true" tabindex="-1"></a>        asyncio.get_event_loop().run_in_executor(<span class="va">None</span>, track_queue.join),</span>
+<span id="cb36-26"><a href="#cb36-26" aria-hidden="true" tabindex="-1"></a>        timeout<span class="op">=</span><span class="fl">5.0</span></span>
+<span id="cb36-27"><a href="#cb36-27" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb36-28"><a href="#cb36-28" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb36-29"><a href="#cb36-29" aria-hidden="true" tabindex="-1"></a>    <span class="co"># 5. Flush Kafka — ensure all buffered messages are delivered</span></span>
+<span id="cb36-30"><a href="#cb36-30" aria-hidden="true" tabindex="-1"></a>    <span class="cf">await</span> kafka_producer.flush()</span>
+<span id="cb36-31"><a href="#cb36-31" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb36-32"><a href="#cb36-32" aria-hidden="true" tabindex="-1"></a>    <span class="co"># 6. Stop pipeline fully</span></span>
+<span id="cb36-33"><a href="#cb36-33" aria-hidden="true" tabindex="-1"></a>    pipeline.set_state(Gst.State.NULL)</span>
+<span id="cb36-34"><a href="#cb36-34" aria-hidden="true" tabindex="-1"></a>    loop.stop()</span>
+<span id="cb36-35"><a href="#cb36-35" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb36-36"><a href="#cb36-36" aria-hidden="true" tabindex="-1"></a><span class="co"># Register handler</span></span>
+<span id="cb36-37"><a href="#cb36-37" aria-hidden="true" tabindex="-1"></a>signal.signal(signal.SIGTERM, <span class="kw">lambda</span> s, f: asyncio.create_task(shutdown(loop)))</span>
+<span id="cb36-38"><a href="#cb36-38" aria-hidden="true" tabindex="-1"></a>signal.signal(signal.SIGINT,  <span class="kw">lambda</span> s, f: asyncio.create_task(shutdown(loop)))</span></code></pre></div>
+<hr />
+<h3 id="quality-score-formula">6. Quality Score Formula</h3>
+<p>The placeholder <code>confidence × bbox_area</code> does not account for blur or occlusion. A production quality score for ReID and top-frame selection:</p>
+<div class="sourceCode" id="cb37"><pre class="sourceCode python"><code class="sourceCode python"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> compute_quality(obj_meta, frame_array: np.ndarray) <span class="op">-&gt;</span> <span class="bu">float</span>:</span>
+<span id="cb37-2"><a href="#cb37-2" aria-hidden="true" tabindex="-1"></a>    l <span class="op">=</span> <span class="bu">int</span>(obj_meta.rect_params.left)</span>
+<span id="cb37-3"><a href="#cb37-3" aria-hidden="true" tabindex="-1"></a>    t <span class="op">=</span> <span class="bu">int</span>(obj_meta.rect_params.top)</span>
+<span id="cb37-4"><a href="#cb37-4" aria-hidden="true" tabindex="-1"></a>    w <span class="op">=</span> <span class="bu">int</span>(obj_meta.rect_params.width)</span>
+<span id="cb37-5"><a href="#cb37-5" aria-hidden="true" tabindex="-1"></a>    h <span class="op">=</span> <span class="bu">int</span>(obj_meta.rect_params.height)</span>
+<span id="cb37-6"><a href="#cb37-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb37-7"><a href="#cb37-7" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Size: larger crops have more detail</span></span>
+<span id="cb37-8"><a href="#cb37-8" aria-hidden="true" tabindex="-1"></a>    TARGET_W, TARGET_H <span class="op">=</span> <span class="dv">128</span>, <span class="dv">256</span></span>
+<span id="cb37-9"><a href="#cb37-9" aria-hidden="true" tabindex="-1"></a>    size_score <span class="op">=</span> <span class="bu">min</span>((w <span class="op">*</span> h) <span class="op">/</span> (TARGET_W <span class="op">*</span> TARGET_H), <span class="fl">1.0</span>)</span>
+<span id="cb37-10"><a href="#cb37-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb37-11"><a href="#cb37-11" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Aspect ratio: penalise heavily occluded or oddly-cropped boxes</span></span>
+<span id="cb37-12"><a href="#cb37-12" aria-hidden="true" tabindex="-1"></a>    aspect <span class="op">=</span> h <span class="op">/</span> <span class="bu">max</span>(w, <span class="dv">1</span>)</span>
+<span id="cb37-13"><a href="#cb37-13" aria-hidden="true" tabindex="-1"></a>    aspect_score <span class="op">=</span> <span class="fl">1.0</span> <span class="cf">if</span> <span class="fl">1.5</span> <span class="op">&lt;</span> aspect <span class="op">&lt;</span> <span class="fl">4.0</span> <span class="cf">else</span> <span class="fl">0.5</span></span>
+<span id="cb37-14"><a href="#cb37-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb37-15"><a href="#cb37-15" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Blur: Laplacian variance — sharp images have high variance</span></span>
+<span id="cb37-16"><a href="#cb37-16" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Compute here while frame_array is still mapped (before probe returns)</span></span>
+<span id="cb37-17"><a href="#cb37-17" aria-hidden="true" tabindex="-1"></a>    crop <span class="op">=</span> frame_array[t:t<span class="op">+</span>h, l:l<span class="op">+</span>w]</span>
+<span id="cb37-18"><a href="#cb37-18" aria-hidden="true" tabindex="-1"></a>    gray <span class="op">=</span> cv2.cvtColor(crop, cv2.COLOR_RGBA2GRAY)</span>
+<span id="cb37-19"><a href="#cb37-19" aria-hidden="true" tabindex="-1"></a>    blur_score <span class="op">=</span> <span class="bu">min</span>(cv2.Laplacian(gray, cv2.CV_64F).var() <span class="op">/</span> <span class="fl">500.0</span>, <span class="fl">1.0</span>)</span>
+<span id="cb37-20"><a href="#cb37-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb37-21"><a href="#cb37-21" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> obj_meta.confidence <span class="op">*</span> size_score <span class="op">*</span> aspect_score <span class="op">*</span> blur_score</span></code></pre></div>
+<p>Blur score must be computed in the probe while <code>frame_array</code> is mapped — not in the worker thread where the surface is no longer valid.</p>
+<hr />
+<h3 id="error-handling-for-kafka-and-redis">7. Error Handling for Kafka and Redis</h3>
+<p><strong>Kafka down</strong> — use librdkafka’s local queue as a buffer. Never block the probe waiting for broker acknowledgement.</p>
+<div class="sourceCode" id="cb38"><pre class="sourceCode ini"><code class="sourceCode ini"><span id="cb38-1"><a href="#cb38-1" aria-hidden="true" tabindex="-1"></a><span class="co"># librdkafka producer config</span></span>
+<span id="cb38-2"><a href="#cb38-2" aria-hidden="true" tabindex="-1"></a><span class="dt">queue.buffering.max.messages</span><span class="ot">=</span><span class="dv">100000</span><span class="st">   # buffer up to 100k messages locally</span></span>
+<span id="cb38-3"><a href="#cb38-3" aria-hidden="true" tabindex="-1"></a><span class="dt">queue.buffering.max.ms</span><span class="ot">=</span><span class="dv">5000</span><span class="st">           # hold up to 5s waiting for broker reconnect</span></span>
+<span id="cb38-4"><a href="#cb38-4" aria-hidden="true" tabindex="-1"></a><span class="dt">message.send.max.retries</span><span class="ot">=</span><span class="dv">10</span></span>
+<span id="cb38-5"><a href="#cb38-5" aria-hidden="true" tabindex="-1"></a><span class="dt">retry.backoff.ms</span><span class="ot">=</span><span class="dv">250</span></span>
+<span id="cb38-6"><a href="#cb38-6" aria-hidden="true" tabindex="-1"></a><span class="dt">socket.keepalive.enable</span><span class="ot">=</span><span class="kw">true</span></span></code></pre></div>
+<p>On delivery failure after all retries:</p>
+<div class="sourceCode" id="cb39"><pre class="sourceCode python"><code class="sourceCode python"><span id="cb39-1"><a href="#cb39-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> delivery_callback(err, msg):</span>
+<span id="cb39-2"><a href="#cb39-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> err:</span>
+<span id="cb39-3"><a href="#cb39-3" aria-hidden="true" tabindex="-1"></a>        log.warning(<span class="st">&quot;Kafka delivery failed: </span><span class="sc">%s</span><span class="st">&quot;</span>, err)</span>
+<span id="cb39-4"><a href="#cb39-4" aria-hidden="true" tabindex="-1"></a>        metrics.increment(<span class="st">&quot;kafka.dropped&quot;</span>)</span>
+<span id="cb39-5"><a href="#cb39-5" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Pipeline continues — never raise here</span></span></code></pre></div>
+<p><strong>Redis down</strong> — fall back to in-process dict. Track state survives the Redis outage but is lost on consumer restart.</p>
+<div class="sourceCode" id="cb40"><pre class="sourceCode python"><code class="sourceCode python"><span id="cb40-1"><a href="#cb40-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> redis_hset_safe(key: <span class="bu">str</span>, mapping: <span class="bu">dict</span>):</span>
+<span id="cb40-2"><a href="#cb40-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">try</span>:</span>
+<span id="cb40-3"><a href="#cb40-3" aria-hidden="true" tabindex="-1"></a>        redis_client.hset(key, mapping<span class="op">=</span>mapping)</span>
+<span id="cb40-4"><a href="#cb40-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">except</span> RedisError:</span>
+<span id="cb40-5"><a href="#cb40-5" aria-hidden="true" tabindex="-1"></a>        log.warning(<span class="st">&quot;Redis unavailable — track state in-process only&quot;</span>)</span>
+<span id="cb40-6"><a href="#cb40-6" aria-hidden="true" tabindex="-1"></a>        metrics.increment(<span class="st">&quot;redis.errors&quot;</span>)</span>
+<span id="cb40-7"><a href="#cb40-7" aria-hidden="true" tabindex="-1"></a>        in_memory_fallback[key] <span class="op">=</span> mapping   <span class="co"># best-effort, not durable</span></span></code></pre></div>
+<hr />
+<h3 id="implementation-gap-summary">Implementation Gap Summary</h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Gap</th>
+<th>Sprint Impact if Missed</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Surface <code>.copy()</code> before probe returns</td>
+<td>Segfault or corrupted crops on Day 1</td>
+</tr>
+<tr class="even">
+<td>TRACK_LOST grace period</td>
+<td>False lifecycle events, incomplete track summaries</td>
+</tr>
+<tr class="odd">
+<td>TRT engine files built on target GPU</td>
+<td>Pipeline skeleton cannot start (blocks T5)</td>
+</tr>
+<tr class="even">
+<td>obj_meta scalar copy only</td>
+<td>Segfault in worker thread accessing stale C pointer</td>
+</tr>
+<tr class="odd">
+<td>Graceful shutdown with queue drain</td>
+<td>Active tracks at deploy time produce no summary</td>
+</tr>
+<tr class="even">
+<td>Blur score computed in probe not worker</td>
+<td>Worker has no frame access — score always zero</td>
+</tr>
+<tr class="odd">
+<td>Kafka/Redis error handling</td>
+<td>Pipeline crashes on infra blip</td>
+</tr>
+</tbody>
+</table>
+</body>
+</html>
